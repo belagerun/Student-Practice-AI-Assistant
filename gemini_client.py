@@ -14,13 +14,26 @@ except ImportError:
 
 load_dotenv()
 
+
+def _get_streamlit_secret(name, default=""):
+    try:
+        import streamlit as st
+
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 API_KEY = (
     os.getenv("GEMINI_API_KEY")
     or os.getenv("GOOGLE_API_KEY")
+    or _get_streamlit_secret("GEMINI_API_KEY")
+    or _get_streamlit_secret("GOOGLE_API_KEY")
     or ""
 )
+
+MODEL_NAME = _get_streamlit_secret("GEMINI_MODEL", MODEL_NAME)
 
 genai.configure(api_key=API_KEY)
 
