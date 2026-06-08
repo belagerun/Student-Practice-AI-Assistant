@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: streamlit-ai-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: SQLITE_DB_PATH
+        value: /var/data/chat_history.db
+    disk:
+      name: streamlit-ai-assistant-data
+      mountPath: /var/data
+      sizeGB: 1
