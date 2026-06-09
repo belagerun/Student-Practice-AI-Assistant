@@ -74,19 +74,54 @@ st.markdown(
         padding-top: 0;
     }
 
-    body:has([data-testid="stSidebar"][aria-expanded="true"]) [data-testid="stAppViewContainer"],
-    body:not(:has([data-testid="stSidebarCollapsedControl"])) [data-testid="stAppViewContainer"] {
+    body:has([data-testid="stSidebar"][aria-expanded="true"]) [data-testid="stAppViewContainer"] {
         --sidebar-layout-width: 300px;
     }
 
     body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"],
+    body:has([data-testid="collapsedControl"]) [data-testid="stAppViewContainer"],
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) [data-testid="stAppViewContainer"],
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) [data-testid="stAppViewContainer"],
+    body:has(button[title*="open" i][title*="sidebar" i]) [data-testid="stAppViewContainer"],
+    body:has(button[title*="show" i][title*="sidebar" i]) [data-testid="stAppViewContainer"],
     body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stAppViewContainer"] {
         --sidebar-layout-width: 0px;
+    }
+
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stSidebar"],
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stSidebar"],
+    body:has([data-testid="collapsedControl"]) [data-testid="stSidebar"],
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) [data-testid="stSidebar"],
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) [data-testid="stSidebar"],
+    body:has(button[title*="open" i][title*="sidebar" i]) [data-testid="stSidebar"],
+    body:has(button[title*="show" i][title*="sidebar" i]) [data-testid="stSidebar"] {
+        min-width: 0 !important;
+        width: 0 !important;
+        max-width: 0 !important;
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+        transform: translateX(-100%) !important;
+        overflow: visible !important;
     }
 
     body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] .main,
     body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stMain"],
     body:has([data-testid="stSidebarCollapsedControl"]) main,
+    body:has([data-testid="collapsedControl"]) [data-testid="stAppViewContainer"] .main,
+    body:has([data-testid="collapsedControl"]) [data-testid="stMain"],
+    body:has([data-testid="collapsedControl"]) main,
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) [data-testid="stAppViewContainer"] .main,
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) [data-testid="stMain"],
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) main,
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) [data-testid="stAppViewContainer"] .main,
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) [data-testid="stMain"],
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) main,
+    body:has(button[title*="open" i][title*="sidebar" i]) [data-testid="stAppViewContainer"] .main,
+    body:has(button[title*="open" i][title*="sidebar" i]) [data-testid="stMain"],
+    body:has(button[title*="open" i][title*="sidebar" i]) main,
+    body:has(button[title*="show" i][title*="sidebar" i]) [data-testid="stAppViewContainer"] .main,
+    body:has(button[title*="show" i][title*="sidebar" i]) [data-testid="stMain"],
+    body:has(button[title*="show" i][title*="sidebar" i]) main,
     body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stAppViewContainer"] .main,
     body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
     body:has([data-testid="stSidebar"][aria-expanded="false"]) main {
@@ -100,6 +135,16 @@ st.markdown(
 
     body:has([data-testid="stSidebarCollapsedControl"]) main .block-container,
     body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stMain"] .block-container,
+    body:has([data-testid="collapsedControl"]) main .block-container,
+    body:has([data-testid="collapsedControl"]) [data-testid="stMain"] .block-container,
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) main .block-container,
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) [data-testid="stMain"] .block-container,
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) main .block-container,
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) [data-testid="stMain"] .block-container,
+    body:has(button[title*="open" i][title*="sidebar" i]) main .block-container,
+    body:has(button[title*="open" i][title*="sidebar" i]) [data-testid="stMain"] .block-container,
+    body:has(button[title*="show" i][title*="sidebar" i]) main .block-container,
+    body:has(button[title*="show" i][title*="sidebar" i]) [data-testid="stMain"] .block-container,
     body:has([data-testid="stSidebar"][aria-expanded="false"]) main .block-container,
     body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"] .block-container {
         max-width: 1000px;
@@ -113,7 +158,12 @@ st.markdown(
         min-width: 280px;
     }
 
-    [data-testid="stSidebarCollapsedControl"] {
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    button[aria-label*="open" i][aria-label*="sidebar" i],
+    button[aria-label*="show" i][aria-label*="sidebar" i],
+    button[title*="open" i][title*="sidebar" i],
+    button[title*="show" i][title*="sidebar" i] {
         position: fixed !important;
         left: 4px !important;
         top: 24px !important;
@@ -122,11 +172,17 @@ st.markdown(
         transition: opacity 0.15s ease;
     }
 
-    [data-testid="stSidebarCollapsedControl"]:hover {
+    [data-testid="stSidebarCollapsedControl"]:hover,
+    [data-testid="collapsedControl"]:hover,
+    button[aria-label*="open" i][aria-label*="sidebar" i]:hover,
+    button[aria-label*="show" i][aria-label*="sidebar" i]:hover,
+    button[title*="open" i][title*="sidebar" i]:hover,
+    button[title*="show" i][title*="sidebar" i]:hover {
         opacity: 1 !important;
     }
 
-    [data-testid="stSidebarCollapsedControl"] button {
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="collapsedControl"] button {
         width: 34px !important;
         height: 34px !important;
         padding: 0 !important;
@@ -251,6 +307,11 @@ st.markdown(
     }
 
     body:has([data-testid="stSidebarCollapsedControl"]) .st-key-bottom_composer,
+    body:has([data-testid="collapsedControl"]) .st-key-bottom_composer,
+    body:has(button[aria-label*="open" i][aria-label*="sidebar" i]) .st-key-bottom_composer,
+    body:has(button[aria-label*="show" i][aria-label*="sidebar" i]) .st-key-bottom_composer,
+    body:has(button[title*="open" i][title*="sidebar" i]) .st-key-bottom_composer,
+    body:has(button[title*="show" i][title*="sidebar" i]) .st-key-bottom_composer,
     body:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-bottom_composer {
         width: min(1000px, calc(100vw - 40px)) !important;
         left: 50% !important;
