@@ -380,14 +380,14 @@ def render_brand_header(context_text=""):
     if context_text:
         context_html = f'<div class="brand-context">{html.escape(context_text)}</div>'
 
-    brand_html = f"""
-        <div class="brand-header">
-            {logo_html}
-            <div class="brand-name">PracticeAI</div>
-            <div class="brand-subtitle">Student Practice AI Assistant</div>
-            {context_html}
-        </div>
-        """
+    brand_html = (
+        '<div class="brand-header">'
+        f"{logo_html}"
+        '<div class="brand-name">PracticeAI</div>'
+        '<div class="brand-subtitle">Student Practice AI Assistant</div>'
+        f"{context_html}"
+        "</div>"
+    )
 
     st.markdown(
         brand_html,
