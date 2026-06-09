@@ -37,9 +37,14 @@ from database import (
 )
 
 
+ASSETS_DIR = Path(__file__).resolve().with_name("assets")
+LOGO_PATH = ASSETS_DIR / "logo.png"
+PAGE_ICON = str(LOGO_PATH) if LOGO_PATH.exists() else "🤖"
+
+
 st.set_page_config(
-    page_title="Student Practice AI Assistant",
-    page_icon="🤖",
+    page_title="PracticeAI",
+    page_icon=PAGE_ICON,
     layout="wide",
 )
 
@@ -124,6 +129,39 @@ st.markdown(
         color: #666;
         font-size: 0.92rem;
         margin-top: 0.2rem;
+    }
+
+    .brand-header {
+        text-align: center;
+        padding: 0.2rem 0 1.15rem;
+        margin-top: 0;
+    }
+
+    .brand-logo {
+        display: block;
+        width: min(320px, 82vw);
+        max-width: 350px;
+        height: auto;
+        margin: 0 auto 0.35rem;
+    }
+
+    .brand-name {
+        font-size: 1.8rem;
+        font-weight: 750;
+        line-height: 1.1;
+        letter-spacing: 0;
+    }
+
+    .brand-subtitle {
+        color: #666;
+        font-size: 1rem;
+        margin-top: 0.2rem;
+    }
+
+    .brand-context {
+        color: #777;
+        font-size: 0.86rem;
+        margin-top: 0.35rem;
     }
 
     .composer-status {
@@ -235,6 +273,49 @@ ARTIFACT_MIME_TYPES = {
     ".png": "image/png",
     ".csv": "text/csv",
 }
+
+
+def get_logo_data_url():
+    if not LOGO_PATH.exists():
+        return ""
+
+    try:
+        encoded_logo = base64.b64encode(
+            LOGO_PATH.read_bytes()
+        ).decode("ascii")
+    except Exception:
+        return ""
+
+    return f"data:image/png;base64,{encoded_logo}"
+
+
+def render_brand_header(context_text=""):
+    logo_data_url = get_logo_data_url()
+
+    if logo_data_url:
+        logo_html = (
+            f'<img class="brand-logo" src="{logo_data_url}" '
+            'alt="PracticeAI logo">'
+        )
+    else:
+        logo_html = ""
+
+    context_html = ""
+
+    if context_text:
+        context_html = f'<div class="brand-context">{html.escape(context_text)}</div>'
+
+    st.markdown(
+        f"""
+        <div class="brand-header">
+            {logo_html}
+            <div class="brand-name">PracticeAI</div>
+            <div class="brand-subtitle">Student Practice AI Assistant</div>
+            {context_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def format_file_size(size_bytes):
@@ -819,16 +900,12 @@ current_title = get_chat_title(
     st.session_state.current_chat
 )
 
-st.markdown(
-    f"""
-    <div class="chat-header">
-        <div class="chat-title">{current_title}</div>
-        <div class="chat-subtitle">
-            {st.session_state.mode_selection_type} mode · Current agent: {st.session_state.ai_mode}
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+render_brand_header(
+    (
+        f"{current_title} · "
+        f"{st.session_state.mode_selection_type} mode · "
+        f"Current agent: {st.session_state.ai_mode}"
+    )
 )
 
 messages = load_chat(

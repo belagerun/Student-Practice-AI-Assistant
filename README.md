@@ -21,6 +21,7 @@ Streamlit AI Assistant is a student-focused AI chat app with Gemini integration,
 ```text
 .
 ├── app.py              # Streamlit entry point
+├── assets/logo.png     # PracticeAI logo
 ├── database.py         # SQLite tables and data functions
 ├── gemini_client.py    # Gemini API client and agents
 ├── web_search.py       # Internet search and page text extraction
