@@ -15,7 +15,6 @@ from gemini_client import (
 )
 from database import (
     delete_chat,
-    delete_brand_html_messages,
     delete_document,
     delete_document_version,
     delete_document_with_versions,
@@ -296,8 +295,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-delete_brand_html_messages()
-
 
 AI_MODES = [
     "General Assistant",
@@ -467,9 +464,12 @@ def is_brand_html_message(message):
     return any(marker in (message or "") for marker in brand_markers)
 
 
-def render_chat_message(message, key_prefix):
+def render_chat_message(role, message, key_prefix=None):
     if is_brand_html_message(message):
         return
+
+    if key_prefix is None:
+        key_prefix = f"{role}_message"
 
     brand_html_pattern = (
         r"<div class=\"brand-header\">.*?"
@@ -1112,6 +1112,7 @@ for message_index, (role, message) in enumerate(messages):
     with st.chat_message(role):
 
         render_chat_message(
+            role,
             message,
             f"chat_message_{message_index}"
         )
@@ -1533,17 +1534,21 @@ if send_message and prompt.strip():
                 selected_agent_message = (
                     f"🧠 Selected agent: {selected_agent}"
                 )
+                assistant_message = f"{selected_agent_message}\n\n{answer}"
 
                 save_message(
                     st.session_state.current_chat,
                     "assistant",
-                    f"{selected_agent_message}\n\n{answer}"
+                    assistant_message
                 )
 
                 with st.chat_message("assistant"):
 
-                    st.markdown(selected_agent_message)
-                    st.markdown(answer)
+                    render_chat_message(
+                        "assistant",
+                        assistant_message,
+                        "no_document_info"
+                    )
 
                 st.session_state.message_nonce += 1
                 st.rerun()
@@ -1631,42 +1636,11 @@ if send_message and prompt.strip():
         "assistant"
     ):
 
-        st.markdown(selected_agent_message)
-
-        if web_search_message:
-
-            st.markdown(web_search_message)
-
-        if artifact_path and Path(artifact_path).exists():
-
-            render_presentation_download(
-                Path(artifact_path).name,
-                "download_new_presentation"
-            )
-
-        elif artifact_path:
-
-            st.warning(
-                "Презентация была создана, но файл не найден для скачивания."
-            )
-
-        if sources_used:
-
-            st.markdown("🔍 Sources used:")
-
-            for source in sources_used:
-
-                st.markdown(f"* {source}")
-
-        if web_sources_used:
-
-            st.markdown("🌐 Web sources:")
-
-            for source in web_sources_used:
-
-                st.markdown(f"* {source}")
-
-        st.markdown(answer)
+        render_chat_message(
+            "assistant",
+            assistant_message,
+            "new_assistant_message"
+        )
 
     st.session_state.message_nonce += 1
 
