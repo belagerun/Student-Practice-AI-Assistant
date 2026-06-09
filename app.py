@@ -1,4 +1,6 @@
 import hashlib
+import base64
+import html
 import re
 from pathlib import Path
 
@@ -91,24 +93,20 @@ st.markdown(
         height: 42px;
     }
 
-    .artifact-download div.stDownloadButton > button {
-        width: auto;
-        height: auto;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: #1f77d0;
-        text-decoration: none;
-        font-size: 0.92rem;
-        font-weight: 500;
-        box-shadow: none;
+    .artifact-link {
+        font-size: 0.95rem;
+        line-height: 1.5;
     }
 
-    .artifact-download div.stDownloadButton > button:hover {
+    .artifact-link a {
+        color: #1f77d0;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .artifact-link a:hover {
         color: #145da0;
         text-decoration: underline;
-        background: transparent;
-        border: 0;
     }
 
     .chat-header {
@@ -278,29 +276,19 @@ def render_artifact_download(file_name, key_prefix):
         return
 
     st.markdown(
-        f"📄 {artifact_path.name} ({format_file_size(len(file_bytes))})"
+        (
+            '<div class="artifact-link">'
+            "📄 "
+            f'<a href="data:{ARTIFACT_MIME_TYPES.get(artifact_path.suffix.lower(), "application/octet-stream")};base64,'
+            f'{base64.b64encode(file_bytes).decode("ascii")}" '
+            f'download="{html.escape(artifact_path.name)}">'
+            f"{html.escape(artifact_path.name)}"
+            "</a>"
+            f" ({format_file_size(len(file_bytes))})"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
     )
-
-    with st.container():
-        st.markdown(
-            '<div class="artifact-download">',
-            unsafe_allow_html=True,
-        )
-        st.download_button(
-            "🔗 Download",
-            data=file_bytes,
-            file_name=artifact_path.name,
-            mime=ARTIFACT_MIME_TYPES.get(
-                artifact_path.suffix.lower(),
-                "application/octet-stream"
-            ),
-            key=f"{key_prefix}_{artifact_path.name}",
-            use_container_width=False,
-        )
-        st.markdown(
-            "</div>",
-            unsafe_allow_html=True,
-        )
 
 
 def render_presentation_download(file_name, key_prefix):
