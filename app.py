@@ -38,7 +38,7 @@ from database import (
 
 
 ASSETS_DIR = Path(__file__).resolve().with_name("assets")
-LOGO_PATH = ASSETS_DIR / "logo.png"
+LOGO_PATH = ASSETS_DIR / "logo_icon.png"
 PAGE_ICON = str(LOGO_PATH) if LOGO_PATH.exists() else "🤖"
 
 
@@ -52,21 +52,64 @@ st.markdown(
     """
     <style>
     .block-container {
-        max-width: 920px;
+        max-width: 1000px;
+        margin-left: auto !important;
+        margin-right: auto !important;
         padding-top: 4.2rem;
         padding-bottom: 9.5rem;
     }
 
+    main .block-container {
+        max-width: 1000px;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
     [data-testid="stAppViewContainer"] {
         padding-top: 0;
+        --sidebar-layout-width: 300px;
     }
 
     [data-testid="stAppViewContainer"] .main {
         padding-top: 0;
     }
 
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] {
+        --sidebar-layout-width: 0px;
+    }
+
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] .main {
+        margin-left: 0 !important;
+        width: 100vw !important;
+    }
+
+    body:has([data-testid="stSidebarCollapsedControl"]) main .block-container {
+        max-width: 1000px;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
     [data-testid="stSidebar"] {
         min-width: 280px;
+    }
+
+    [data-testid="stSidebarCollapsedControl"] {
+        position: fixed !important;
+        left: 4px !important;
+        top: 24px !important;
+        opacity: 0.15 !important;
+        z-index: 9999 !important;
+        transition: opacity 0.15s ease;
+    }
+
+    [data-testid="stSidebarCollapsedControl"]:hover {
+        opacity: 1 !important;
+    }
+
+    [data-testid="stSidebarCollapsedControl"] button {
+        width: 34px !important;
+        height: 34px !important;
+        padding: 0 !important;
     }
 
     [data-testid="stSidebar"] h1 {
@@ -133,33 +176,37 @@ st.markdown(
 
     .brand-header {
         text-align: center;
-        padding: 0.2rem 0 1.15rem;
+        padding: 0.1rem 0 1.2rem;
         margin-top: 0;
+        color: inherit;
     }
 
     .brand-logo {
         display: block;
-        width: min(320px, 82vw);
-        max-width: 350px;
+        width: min(150px, 42vw);
+        max-width: 170px;
         height: auto;
-        margin: 0 auto 0.35rem;
+        margin: 0 auto 0.45rem;
     }
 
     .brand-name {
-        font-size: 1.8rem;
+        color: inherit;
+        font-size: clamp(2.625rem, 6vw, 3.5rem);
         font-weight: 750;
         line-height: 1.1;
         letter-spacing: 0;
     }
 
     .brand-subtitle {
-        color: #666;
-        font-size: 1rem;
-        margin-top: 0.2rem;
+        color: var(--text-color);
+        opacity: 0.68;
+        font-size: 1.02rem;
+        margin-top: 0.25rem;
     }
 
     .brand-context {
-        color: #777;
+        color: var(--text-color);
+        opacity: 0.55;
         font-size: 0.86rem;
         margin-top: 0.35rem;
     }
@@ -172,8 +219,8 @@ st.markdown(
 
     .st-key-bottom_composer {
         position: fixed;
-        width: min(920px, calc(100vw - 340px));
-        left: calc(300px + (100vw - 300px - min(920px, calc(100vw - 340px))) / 2);
+        width: min(1000px, calc(100vw - var(--sidebar-layout-width) - 40px));
+        left: calc(var(--sidebar-layout-width) + (100vw - var(--sidebar-layout-width) - min(1000px, calc(100vw - var(--sidebar-layout-width) - 40px))) / 2);
         right: auto;
         bottom: 0;
         z-index: 1000;
