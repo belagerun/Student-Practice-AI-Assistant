@@ -31,6 +31,28 @@ conn = sqlite3.connect(
 
 cursor = conn.cursor()
 
+
+def _table_columns(table_name):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+
+    return [
+        row[1]
+        for row in cursor.fetchall()
+    ]
+
+
+def _add_column_if_missing(table_name, column_name, column_definition):
+    if column_name in _table_columns(table_name):
+
+        return
+
+    cursor.execute(
+        f"""
+        ALTER TABLE {table_name}
+        ADD COLUMN {column_name} {column_definition}
+        """
+    )
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS chats(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,6 +144,77 @@ CREATE TABLE IF NOT EXISTS memory(
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 )
 """)
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS projects(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    deadline TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS artifacts(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER,
+    project_id INTEGER,
+    file_name TEXT NOT NULL,
+    file_path TEXT,
+    artifact_type TEXT,
+    file_size INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+_add_column_if_missing(
+    "chats",
+    "project_id",
+    "INTEGER"
+)
+_add_column_if_missing(
+    "documents",
+    "project_id",
+    "INTEGER"
+)
+_add_column_if_missing(
+    "artifacts",
+    "project_id",
+    "INTEGER"
+)
+_add_column_if_missing(
+    "artifacts",
+    "chat_id",
+    "INTEGER"
+)
+_add_column_if_missing(
+    "artifacts",
+    "file_name",
+    "TEXT"
+)
+_add_column_if_missing(
+    "artifacts",
+    "file_path",
+    "TEXT"
+)
+_add_column_if_missing(
+    "artifacts",
+    "artifact_type",
+    "TEXT"
+)
+_add_column_if_missing(
+    "artifacts",
+    "file_size",
+    "INTEGER"
+)
+_add_column_if_missing(
+    "artifacts",
+    "created_at",
+    "TEXT"
+)
 
 conn.commit()
 
@@ -224,20 +317,22 @@ def save_message(
     chat_id,
     role,
     message,
-    chat_title=None
+    chat_title=None,
+    project_id=None
 ):
 
     cursor.execute(
         """
         INSERT INTO chats
-        (chat_id, chat_title, role, message)
-        VALUES (?, ?, ?, ?)
+        (chat_id, chat_title, role, message, project_id)
+        VALUES (?, ?, ?, ?, ?)
         """,
         (
             chat_id,
             chat_title,
             role,
-            message
+            message,
+            project_id
         )
     )
 
@@ -494,7 +589,7 @@ def migrate_document_chunks():
         )
 
 
-def save_document_version(chat_id, file_name, file_content):
+def save_document_version(chat_id, file_name, file_content, project_id=None):
 
     cursor.execute(
         """
@@ -515,17 +610,32 @@ def save_document_version(chat_id, file_name, file_content):
 
         document_id = row[0]
 
+        if project_id is not None:
+
+            cursor.execute(
+                """
+                UPDATE documents
+                SET project_id=?
+                WHERE id=?
+                """,
+                (
+                    project_id,
+                    document_id
+                )
+            )
+
     else:
 
         cursor.execute(
             """
             INSERT INTO documents
-            (chat_id, file_name, created_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
+            (chat_id, file_name, project_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 chat_id,
-                file_name
+                file_name,
+                project_id
             )
         )
 
@@ -570,12 +680,13 @@ def save_document_version(chat_id, file_name, file_content):
     return version_number
 
 
-def save_document(chat_id, file_name, file_content):
+def save_document(chat_id, file_name, file_content, project_id=None):
 
     return save_document_version(
         chat_id,
         file_name,
-        file_content
+        file_content,
+        project_id
     )
 
 
@@ -876,6 +987,323 @@ def get_chat_context(chat_id, limit=10):
     rows.reverse()
 
     return rows
+
+
+def create_project(title, description="", deadline=None):
+    cursor.execute(
+        """
+        INSERT INTO projects
+        (title, description, deadline, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (
+            title,
+            description,
+            deadline
+        )
+    )
+    conn.commit()
+
+    return cursor.lastrowid
+
+
+def get_projects():
+    cursor.execute(
+        """
+        SELECT id, title, description, deadline, status, created_at, updated_at
+        FROM projects
+        ORDER BY updated_at DESC, id DESC
+        """
+    )
+
+    return cursor.fetchall()
+
+
+def get_project(project_id):
+    if not project_id:
+
+        return None
+
+    cursor.execute(
+        """
+        SELECT id, title, description, deadline, status, created_at, updated_at
+        FROM projects
+        WHERE id=?
+        LIMIT 1
+        """,
+        (project_id,)
+    )
+
+    return cursor.fetchone()
+
+
+def update_project(
+    project_id,
+    title=None,
+    description=None,
+    deadline=None,
+    status=None
+):
+    project = get_project(project_id)
+
+    if not project:
+
+        return
+
+    current_title = project[1]
+    current_description = project[2]
+    current_deadline = project[3]
+    current_status = project[4]
+
+    cursor.execute(
+        """
+        UPDATE projects
+        SET title=?,
+            description=?,
+            deadline=?,
+            status=?,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+        """,
+        (
+            title if title is not None else current_title,
+            description if description is not None else current_description,
+            deadline if deadline is not None else current_deadline,
+            status if status is not None else current_status,
+            project_id
+        )
+    )
+    conn.commit()
+
+
+def delete_project(project_id):
+    if not project_id:
+
+        return
+
+    cursor.execute(
+        """
+        UPDATE chats
+        SET project_id=NULL
+        WHERE project_id=?
+        """,
+        (project_id,)
+    )
+    cursor.execute(
+        """
+        UPDATE documents
+        SET project_id=NULL
+        WHERE project_id=?
+        """,
+        (project_id,)
+    )
+    cursor.execute(
+        """
+        UPDATE artifacts
+        SET project_id=NULL
+        WHERE project_id=?
+        """,
+        (project_id,)
+    )
+    cursor.execute(
+        """
+        DELETE FROM projects
+        WHERE id=?
+        """,
+        (project_id,)
+    )
+    conn.commit()
+
+
+def get_project_chats(project_id):
+    if not project_id:
+
+        return []
+
+    cursor.execute(
+        """
+        SELECT
+            chat_id,
+            COALESCE(MAX(chat_title), 'Chat ' || chat_id) AS title,
+            MAX(id) AS last_message_id
+        FROM chats
+        WHERE project_id=?
+        GROUP BY chat_id
+        ORDER BY last_message_id DESC
+        """,
+        (project_id,)
+    )
+
+    return cursor.fetchall()
+
+
+def get_project_documents(project_id):
+    if not project_id:
+
+        return []
+
+    cursor.execute(
+        """
+        SELECT
+            d.id,
+            d.chat_id,
+            d.file_name,
+            d.created_at,
+            COUNT(v.id) AS versions_count
+        FROM documents d
+        LEFT JOIN document_versions v ON v.document_id=d.id
+        WHERE d.project_id=?
+        GROUP BY d.id, d.chat_id, d.file_name, d.created_at
+        ORDER BY d.created_at DESC, d.id DESC
+        """,
+        (project_id,)
+    )
+
+    return cursor.fetchall()
+
+
+def get_project_artifacts(project_id):
+    if not project_id:
+
+        return []
+
+    cursor.execute(
+        """
+        SELECT id, chat_id, file_name, file_path, artifact_type, file_size, created_at
+        FROM artifacts
+        WHERE project_id=?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (project_id,)
+    )
+
+    return cursor.fetchall()
+
+
+def assign_chat_to_project(chat_id, project_id):
+    cursor.execute(
+        """
+        UPDATE chats
+        SET project_id=?
+        WHERE chat_id=?
+        """,
+        (
+            project_id,
+            chat_id
+        )
+    )
+    conn.commit()
+
+
+def assign_document_to_project(document_id, project_id):
+    cursor.execute(
+        """
+        UPDATE documents
+        SET project_id=?
+        WHERE id=?
+        """,
+        (
+            project_id,
+            document_id
+        )
+    )
+    conn.commit()
+
+
+def assign_artifact_to_project(artifact_id, project_id):
+    cursor.execute(
+        """
+        UPDATE artifacts
+        SET project_id=?
+        WHERE id=?
+        """,
+        (
+            project_id,
+            artifact_id
+        )
+    )
+    conn.commit()
+
+
+def register_artifact(
+    file_name,
+    file_path="",
+    artifact_type="",
+    file_size=None,
+    chat_id=None,
+    project_id=None
+):
+    cursor.execute(
+        """
+        SELECT id
+        FROM artifacts
+        WHERE file_name=?
+        LIMIT 1
+        """,
+        (file_name,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+
+        artifact_id = row[0]
+        cursor.execute(
+            """
+            UPDATE artifacts
+            SET file_path=?,
+                artifact_type=?,
+                file_size=?,
+                chat_id=COALESCE(?, chat_id),
+                project_id=COALESCE(?, project_id)
+            WHERE id=?
+            """,
+            (
+                file_path,
+                artifact_type,
+                file_size,
+                chat_id,
+                project_id,
+                artifact_id
+            )
+        )
+
+    else:
+
+        cursor.execute(
+            """
+            INSERT INTO artifacts
+            (chat_id, project_id, file_name, file_path, artifact_type, file_size, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                chat_id,
+                project_id,
+                file_name,
+                file_path,
+                artifact_type,
+                file_size
+            )
+        )
+        artifact_id = cursor.lastrowid
+
+    conn.commit()
+
+    return artifact_id
+
+
+def delete_artifact_by_name(file_name):
+    cursor.execute(
+        """
+        DELETE FROM artifacts
+        WHERE file_name=?
+        """,
+        (file_name,)
+    )
+    conn.commit()
+
+
+def get_chat_recent_messages(chat_id, limit=5):
+    return get_chat_context(chat_id, limit)
 
 
 def save_memory(memory_text, importance=3):

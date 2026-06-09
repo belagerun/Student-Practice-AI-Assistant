@@ -19,6 +19,8 @@ from gemini_client import (
     set_stream_callback,
 )
 from database import (
+    assign_chat_to_project,
+    delete_artifact_by_name,
     delete_chat,
     delete_document,
     delete_document_version,
@@ -32,6 +34,7 @@ from database import (
     load_latest_document_version,
     load_specific_document_version,
     load_memories,
+    register_artifact,
     save_document_version,
     save_memory,
     save_message,
@@ -40,6 +43,8 @@ from database import (
     update_memory,
     delete_memory,
 )
+from ui.project_page import render_project_page
+from ui.project_panel import render_project_panel
 
 
 ASSETS_DIR = Path(__file__).resolve().with_name("assets")
@@ -1045,6 +1050,10 @@ if "auto_web_search" not in st.session_state:
 
     st.session_state.auto_web_search = True
 
+if "active_project_id" not in st.session_state:
+
+    st.session_state.active_project_id = None
+
 
 # ---------------------
 # Sidebar: chats only
@@ -1052,10 +1061,13 @@ if "auto_web_search" not in st.session_state:
 
 st.sidebar.title("Chats")
 
+active_project_id = render_project_panel()
+
 page = st.sidebar.radio(
     "Navigation",
     [
         "💬 Chats",
+        "📁 Project",
         "🧠 Memory",
     ],
     label_visibility="collapsed",
@@ -1224,6 +1236,13 @@ if page == "🧠 Memory":
                     delete_memory(memory_id)
                     st.rerun()
 
+    st.stop()
+
+if page == "📁 Project":
+
+    render_project_page(
+        st.session_state.get("active_project_id")
+    )
     st.stop()
 
 
@@ -1431,6 +1450,7 @@ else:
 
                     try:
                         artifact_file.unlink()
+                        delete_artifact_by_name(artifact_file.name)
                     except Exception as error:
                         st.warning(f"Artifact not found. Details: {error}")
 
@@ -1556,7 +1576,8 @@ with st.container(key="bottom_composer"):
                     version_number = save_document_version(
                         st.session_state.current_chat,
                         document_file_name,
-                        document_text
+                        document_text,
+                        st.session_state.get("active_project_id")
                     )
 
                     st.session_state.last_uploaded_document = upload_key
@@ -1634,15 +1655,25 @@ if send_message and prompt.strip():
             st.session_state.current_chat,
             "user",
             prompt,
-            title
+            title,
+            st.session_state.get("active_project_id")
         )
+
+        if st.session_state.get("active_project_id"):
+
+            assign_chat_to_project(
+                st.session_state.current_chat,
+                st.session_state.get("active_project_id")
+            )
 
     else:
 
         save_message(
             st.session_state.current_chat,
             "user",
-            prompt
+            prompt,
+            None,
+            st.session_state.get("active_project_id")
         )
 
     with st.chat_message("user"):
@@ -1872,7 +1903,9 @@ if send_message and prompt.strip():
                 save_message(
                     st.session_state.current_chat,
                     "assistant",
-                    assistant_message
+                    assistant_message,
+                    None,
+                    st.session_state.get("active_project_id")
                 )
 
                 with st.chat_message("assistant"):
@@ -1905,7 +1938,9 @@ if send_message and prompt.strip():
                 save_message(
                     st.session_state.current_chat,
                     "assistant",
-                    assistant_message
+                    assistant_message,
+                    None,
+                    st.session_state.get("active_project_id")
                 )
 
                 with st.chat_message("assistant"):
@@ -1997,9 +2032,23 @@ if send_message and prompt.strip():
 
     if artifact_path:
 
-        artifact_suffix = Path(artifact_path).suffix.lower().lstrip(".") or "file"
+        artifact_file_path = Path(artifact_path)
+        artifact_suffix = artifact_file_path.suffix.lower().lstrip(".") or "file"
+        artifact_size = (
+            artifact_file_path.stat().st_size
+            if artifact_file_path.exists()
+            else None
+        )
+        register_artifact(
+            artifact_file_path.name,
+            str(artifact_file_path),
+            artifact_suffix.upper(),
+            artifact_size,
+            st.session_state.current_chat,
+            st.session_state.get("active_project_id")
+        )
         assistant_message += (
-            f"\n\n<!--ARTIFACT:{artifact_suffix}:{Path(artifact_path).name}-->"
+            f"\n\n<!--ARTIFACT:{artifact_suffix}:{artifact_file_path.name}-->"
         )
 
     if sources_used:
@@ -2061,7 +2110,9 @@ if send_message and prompt.strip():
     save_message(
         st.session_state.current_chat,
         "assistant",
-        assistant_message
+        assistant_message,
+        None,
+        st.session_state.get("active_project_id")
     )
 
     st.session_state.message_nonce += 1
