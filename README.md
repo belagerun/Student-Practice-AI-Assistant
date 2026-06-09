@@ -11,6 +11,7 @@ Streamlit AI Assistant is a student-focused AI chat app with Gemini integration,
 - Document version history.
 - Mini-RAG chunk search for document questions.
 - Web Search Agent for current internet information.
+- PowerPoint presentation generation (`.pptx`) with downloadable artifacts.
 - Automatic agent routing.
 - Safe Gemini quota handling.
 - SQLite storage with a configurable database path.
@@ -23,6 +24,7 @@ Streamlit AI Assistant is a student-focused AI chat app with Gemini integration,
 ├── database.py         # SQLite tables and data functions
 ├── gemini_client.py    # Gemini API client and agents
 ├── web_search.py       # Internet search and page text extraction
+├── presentation_generator.py # PowerPoint artifact generation
 ├── file_reader.py      # TXT, PDF, DOCX text extraction
 ├── requirements.txt    # Python dependencies
 ├── render.yaml         # Render deployment config
@@ -74,6 +76,18 @@ In the chat settings:
 - Select `🌐 Web Search` to force internet search for a specific prompt.
 
 The assistant shows `🌐 Web Search Activated` and lists the sources used before the answer. If internet access is unavailable, the app returns a friendly error instead of crashing.
+
+## Presentation Generator
+
+Ask for a presentation with prompts like:
+
+- `Создай презентацию`
+- `Сделай PPT`
+- `Сделай слайды`
+- `Подготовь презентацию по документу`
+- `Create presentation`
+
+The app creates a `.pptx` file in `artifacts/`, shows `📊 Presentation created successfully`, and provides a download button. Generated `.pptx` files are ignored by Git.
 
 ## SQLite Notes
 

@@ -3,6 +3,7 @@ import re
 import time
 
 from google import genai
+from presentation_generator import generate_presentation
 from web_search import search_web
 
 try:
@@ -190,6 +191,11 @@ You are Web Search Agent.
 Use web search results to answer questions about current, recent, or time-sensitive information.
 Mention uncertainty when sources are incomplete or conflicting.
 """,
+    "Presentation Generator": """
+You are Presentation Generator.
+Create clear PowerPoint slide structures with concise titles and 5-7 bullet points per slide.
+Use uploaded document context when available.
+""",
 }
 
 DEFAULT_AI_MODE = "General Assistant"
@@ -201,6 +207,7 @@ AGENT_TO_MODE = {
     "Document Agent": "Document Analyst",
     "Internship Agent": "Internship Assistant",
     "Web Search Agent": "Web Search",
+    "Presentation Agent": "Presentation Generator",
     "General Agent": "General Assistant",
 }
 
@@ -343,6 +350,7 @@ Available modes:
 - Document Analyst
 - Internship Assistant
 - Web Search
+- Presentation Generator
 - General Assistant
 
 Rules:
@@ -351,6 +359,7 @@ Rules:
 - Document Analyst: requests to analyze, summarize, extract facts, compare document content.
 - Internship Assistant: internship tasks, practice reports, workplace tasks, student practice.
 - Web Search: latest news, recent facts, current versions, winners, prices, schedules, releases.
+- Presentation Generator: PowerPoint, PPTX, slides, presentation creation.
 - General Assistant: anything else.
 - If a document is attached and the user asks about file content, prefer Document Analyst.
 
@@ -438,8 +447,24 @@ User message:
         "rag",
     ]
 
+    presentation_words = [
+        "создай презентацию",
+        "сделай презентацию",
+        "подготовь презентацию",
+        "сделай ppt",
+        "ppt",
+        "pptx",
+        "слайды",
+        "create presentation",
+        "presentation",
+        "slides",
+    ]
+
     if needs_web_search(message):
         return "Web Search"
+
+    if any(word in lowered_message for word in presentation_words):
+        return "Presentation Generator"
 
     if (
         document_attached
@@ -615,6 +640,76 @@ Give a concise answer first, then key details. Do not invent facts.
     return answer, sources
 
 
+def presentation_agent(prompt, context, document_text=""):
+    source_text = document_text.strip() or prompt
+
+    if not source_text.strip():
+
+        return (
+            "Не удалось создать презентацию: нет текста запроса или документа.",
+            ""
+        )
+
+    outline_prompt = f"""
+Create a PowerPoint presentation outline in Russian.
+
+Rules:
+- Return exactly 10 slide blocks.
+- Use this format for each block:
+SLIDE 1: Title
+- bullet
+- bullet
+- bullet
+- bullet
+- bullet
+- bullet
+- bullet
+- First slide must be a title slide.
+- Last slide must be Thank You / Conclusion.
+- Every content slide must have a short title and no more than 5-7 concise bullets.
+
+Conversation context:
+{context}
+
+User request:
+{prompt}
+
+Source material:
+{source_text[:30000]}
+"""
+
+    outline = safe_generate_content(outline_prompt)
+
+    if (
+        is_quota_message(outline)
+        or outline.startswith("Произошла ошибка")
+        or outline.startswith("Gemini API-ключ")
+        or not outline.strip()
+    ):
+
+        return outline, ""
+
+    try:
+
+        file_path = generate_presentation(
+            generate_chat_title(prompt),
+            outline,
+            10
+        )
+
+    except Exception as error:
+
+        return (
+            f"Не удалось создать презентацию. Детали: {error}",
+            ""
+        )
+
+    return (
+        "📊 Presentation created successfully",
+        file_path
+    )
+
+
 def general_agent(prompt, context):
 
     system_prompt = """
@@ -752,8 +847,26 @@ def _agent_from_keywords(prompt, document_attached, allow_web_search=True):
         "автоматизация",
     ]
 
+    presentation_words = [
+        "создай презентацию",
+        "сделай презентацию",
+        "подготовь презентацию",
+        "презентацию по документу",
+        "сделай ppt",
+        "ppt",
+        "pptx",
+        "слайды",
+        "сделай слайды",
+        "create presentation",
+        "presentation",
+        "slides",
+    ]
+
     if allow_web_search and needs_web_search(lowered_prompt):
         return "Web Search Agent"
+
+    if any(word in lowered_prompt for word in presentation_words):
+        return "Presentation Agent"
 
     if document_attached:
         return "Document Agent"
@@ -798,6 +911,10 @@ def router_agent(
     if force_web_search or manual_mode == "Web Search":
 
         selected_agent = "Web Search Agent"
+
+    elif manual_mode == "Presentation Generator":
+
+        selected_agent = "Presentation Agent"
 
     elif auto_mode:
 
@@ -856,7 +973,17 @@ def router_agent(
             context
         )
 
-        return selected_agent, AGENT_TO_MODE[selected_agent], answer, web_sources
+        return selected_agent, AGENT_TO_MODE[selected_agent], answer, web_sources, ""
+
+    elif selected_agent == "Presentation Agent":
+
+        answer, artifact_path = presentation_agent(
+            prompt,
+            context,
+            document_text
+        )
+
+        return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], artifact_path
 
     else:
 
@@ -866,7 +993,7 @@ def router_agent(
             context
         )
 
-    return selected_agent, AGENT_TO_MODE[selected_agent], answer, []
+    return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], ""
 
 
 def run_task(

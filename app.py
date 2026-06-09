@@ -1,5 +1,6 @@
 import hashlib
 import re
+from pathlib import Path
 
 import streamlit as st
 
@@ -171,6 +172,7 @@ AI_MODES = [
     "Document Analyst",
     "Internship Assistant",
     "Web Search",
+    "Presentation Generator",
 ]
 
 MODE_SELECTION_TYPES = [
@@ -186,6 +188,7 @@ TASK_MODES = [
     "План проекта",
     "📚 Analyze All Documents",
     "🌐 Web Search",
+    "Presentation Generator",
 ]
 
 MODE_HINTS = {
@@ -196,7 +199,10 @@ MODE_HINTS = {
     "План проекта": "Опишите цель проекта...",
     "📚 Analyze All Documents": "Задайте вопрос по всем документам...",
     "🌐 Web Search": "Что найти в интернете?",
+    "Presentation Generator": "Опишите тему презентации...",
 }
+
+ARTIFACTS_DIR = Path(__file__).resolve().with_name("artifacts")
 
 
 def build_all_documents_text(documents):
@@ -764,6 +770,39 @@ for document_id, file_name, file_content, uploaded_at, version_number in chat_do
 
             st.rerun()
 
+st.markdown("### 📁 Artifacts")
+
+if not ARTIFACTS_DIR.exists():
+
+    st.caption("Артефакты пока не созданы")
+
+else:
+
+    artifact_files = sorted(
+        ARTIFACTS_DIR.glob("*.pptx"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )
+
+    if not artifact_files:
+
+        st.caption("Артефакты пока не созданы")
+
+    for artifact_file in artifact_files:
+
+        with open(artifact_file, "rb") as file:
+
+            st.download_button(
+                f"⬇ Download PPTX · {artifact_file.name}",
+                data=file.read(),
+                file_name=artifact_file.name,
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "presentationml.presentation"
+                ),
+                key=f"download_artifact_{artifact_file.name}",
+            )
+
 for role, message in messages:
 
     with st.chat_message(role):
@@ -1054,8 +1093,29 @@ if send_message and prompt.strip():
             and needs_web_search(prompt)
         )
     )
+    presentation_requested = (
+        st.session_state.task_mode == "Presentation Generator"
+        or any(
+            word in prompt.lower()
+            for word in [
+                "создай презентацию",
+                "сделай презентацию",
+                "подготовь презентацию",
+                "презентацию по документу",
+                "сделай ppt",
+                "ppt",
+                "pptx",
+                "слайды",
+                "сделай слайды",
+                "create presentation",
+                "presentation",
+                "slides",
+            ]
+        )
+    )
     sources_used = []
     web_sources_used = []
+    artifact_path = ""
 
     if (
         st.session_state.task_mode == "Анализ PDF"
@@ -1181,6 +1241,14 @@ if send_message and prompt.strip():
                 st.session_state.message_nonce += 1
                 st.rerun()
 
+            elif presentation_requested and chat_documents:
+
+                selected_document_name, document_text = build_document_text_for_prompt(
+                    prompt,
+                    chat_documents,
+                    st.session_state.current_chat
+                )
+
             else:
 
                 document_text = ""
@@ -1191,7 +1259,7 @@ if send_message and prompt.strip():
                 f"\nSelected document: {selected_document_name}\n"
             )
 
-        selected_agent, selected_mode, answer, web_sources_used = router_agent(
+        selected_agent, selected_mode, answer, web_sources_used, artifact_path = router_agent(
             prompt,
             bool(chat_documents),
             st.session_state.mode_selection_type == "Auto",
@@ -1219,6 +1287,10 @@ if send_message and prompt.strip():
     if web_search_message:
 
         assistant_message += f"\n\n{web_search_message}"
+
+    if artifact_path:
+
+        assistant_message += f"\n\n📎 Artifact: {Path(artifact_path).name}"
 
     if sources_used:
 
@@ -1255,6 +1327,21 @@ if send_message and prompt.strip():
         if web_search_message:
 
             st.markdown(web_search_message)
+
+        if artifact_path and Path(artifact_path).exists():
+
+            with open(artifact_path, "rb") as file:
+
+                st.download_button(
+                    "⬇ Download PPTX",
+                    data=file.read(),
+                    file_name=Path(artifact_path).name,
+                    mime=(
+                        "application/vnd.openxmlformats-officedocument."
+                        "presentationml.presentation"
+                    ),
+                    key=f"download_new_presentation_{Path(artifact_path).name}",
+                )
 
         if sources_used:
 
