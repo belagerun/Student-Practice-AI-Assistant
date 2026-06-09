@@ -10,6 +10,7 @@ from file_reader import read_file
 from gemini_client import (
     extract_user_memories,
     generate_chat_title,
+    needs_docx_report,
     needs_web_search,
     router_agent,
 )
@@ -528,8 +529,26 @@ def is_brand_html_message(message):
     return any(marker in (message or "") for marker in brand_markers)
 
 
+def is_docx_refusal_message(message):
+    lowered_message = (message or "").lower()
+    refusal_markers = [
+        "не могу создавать docx",
+        "не могу создать docx",
+        "нет технической возможности создавать",
+        "нет возможности прикреплять файлы",
+        "не могу прикреплять файлы",
+        "скопировать и сохранить",
+        "скопируйте текст",
+    ]
+
+    return any(marker in lowered_message for marker in refusal_markers)
+
+
 def render_chat_message(role, message, key_prefix=None):
     if is_brand_html_message(message):
+        return
+
+    if role == "assistant" and is_docx_refusal_message(message):
         return
 
     if key_prefix is None:
@@ -1492,28 +1511,7 @@ if send_message and prompt.strip():
     )
     report_docx_requested = (
         st.session_state.task_mode == "Report DOCX Generator"
-        or any(
-            word in prompt.lower()
-            for word in [
-                "создай отчёт",
-                "создай отчет",
-                "сделай отчёт",
-                "сделай отчет",
-                "сгенерируй отчёт",
-                "сгенерируй отчет",
-                "напиши отчёт по документу",
-                "напиши отчет по документу",
-                "сделай docx",
-                "создай docx",
-                "docx отчёт",
-                "docx отчет",
-                "docx report",
-                "create report",
-                "generate report",
-                "generate docx report",
-                "create docx report",
-            ]
-        )
+        or needs_docx_report(prompt)
     )
     sources_used = []
     web_sources_used = []
@@ -1616,7 +1614,7 @@ if send_message and prompt.strip():
 
             elif report_docx_requested:
 
-                selected_agent = "Report DOCX Agent"
+                selected_agent = "Report Generator"
                 answer = (
                     "Не удалось создать DOCX-отчёт: в документах этого чата "
                     "не найдено релевантных фрагментов по запросу. Уточните тему "

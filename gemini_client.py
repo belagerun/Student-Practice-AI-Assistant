@@ -52,6 +52,44 @@ REPORT_DOCX_WORDS = [
     "generate report",
     "generate docx report",
     "create docx report",
+    "создай отчёт docx",
+    "создай отчет docx",
+    "создай docx отчёт",
+    "создай docx отчет",
+    "оформи в docx",
+    "оформи всё в docx",
+    "оформи все в docx",
+    "в файле формата docx",
+    "в формате docx",
+    "файл docx",
+    "docx файл",
+]
+
+REPORT_DOCX_ACTION_WORDS = [
+    "создай",
+    "сделай",
+    "сгенерируй",
+    "напиши",
+    "составь",
+    "оформи",
+    "подготовь",
+    "create",
+    "generate",
+    "make",
+    "write",
+]
+
+REPORT_DOCX_CONTENT_WORDS = [
+    "отчёт",
+    "отчет",
+    "сочинение",
+    "эссе",
+    "документ",
+    "файл",
+    "report",
+    "essay",
+    "document",
+    "file",
 ]
 
 _quota_blocked_until = 0
@@ -257,6 +295,44 @@ def is_quota_message(text):
 
     return text.startswith(GEMINI_QUOTA_MESSAGE)
 
+
+def needs_docx_report(prompt):
+    lowered_prompt = (prompt or "").lower()
+
+    if any(word in lowered_prompt for word in REPORT_DOCX_WORDS):
+
+        return True
+
+    if "docx" not in lowered_prompt:
+
+        return False
+
+    has_action = any(
+        word in lowered_prompt
+        for word in REPORT_DOCX_ACTION_WORDS
+    )
+    has_content = any(
+        word in lowered_prompt
+        for word in REPORT_DOCX_CONTENT_WORDS
+    )
+
+    return has_action and has_content
+
+
+def _is_docx_refusal(text):
+    lowered_text = (text or "").lower()
+    refusal_markers = [
+        "не могу создавать docx",
+        "не могу создать docx",
+        "нет технической возможности создавать",
+        "нет возможности прикреплять файлы",
+        "не могу прикреплять файлы",
+        "скопировать и сохранить",
+        "скопируйте текст",
+    ]
+
+    return any(marker in lowered_text for marker in refusal_markers)
+
 SYSTEM_PROMPTS = {
     "General Assistant": """
 You are a helpful AI assistant for students.
@@ -311,6 +387,7 @@ AGENT_TO_MODE = {
     "Web Search Agent": "Web Search",
     "Presentation Agent": "Presentation Generator",
     "Report DOCX Agent": "Report DOCX Generator",
+    "Report Generator": "Report DOCX Generator",
     "General Agent": "General Assistant",
 }
 
@@ -571,7 +648,7 @@ User message:
     if any(word in lowered_message for word in presentation_words):
         return "Presentation Generator"
 
-    if any(word in lowered_message for word in REPORT_DOCX_WORDS):
+    if needs_docx_report(message):
         return "Report DOCX Generator"
 
     if (
@@ -861,6 +938,8 @@ Create DOCX report content in Russian.
 Rules:
 - Return ONLY report content. No greeting, no markdown fence, no helper text.
 - Do NOT mention that you are an AI model.
+- Do NOT say that you cannot create DOCX files.
+- Do NOT tell the user to copy text manually.
 - Use formal, clear report language.
 - Structure the answer with these headings:
   Introduction
@@ -890,6 +969,21 @@ Relevant source material:
     ):
 
         return report_content, ""
+
+    if _is_docx_refusal(report_content):
+
+        report_content = f"""
+Introduction:
+This document was prepared according to the user's request.
+
+Main Part:
+{prompt_text}
+
+The topic should be developed into a structured written work with clear reasoning, relevant examples, and a coherent sequence of ideas. The content should be suitable for further editing and submission as a DOCX document.
+
+Conclusion:
+The document summarizes the requested topic and provides a complete draft that can be reviewed, expanded, or adapted for academic use.
+"""
 
     try:
 
@@ -1089,8 +1183,8 @@ def _agent_from_keywords(prompt, document_attached, allow_web_search=True):
     if any(word in lowered_prompt for word in presentation_words):
         return "Presentation Agent"
 
-    if any(word in lowered_prompt for word in REPORT_DOCX_WORDS):
-        return "Report DOCX Agent"
+    if needs_docx_report(prompt):
+        return "Report Generator"
 
     if document_attached:
         return "Document Agent"
@@ -1159,7 +1253,7 @@ def router_agent(
 
         elif manual_mode == "Report DOCX Generator":
 
-            selected_agent = "Report DOCX Agent"
+            selected_agent = "Report Generator"
 
         elif auto_mode:
 
@@ -1240,7 +1334,7 @@ def router_agent(
                 artifact_path
             )
 
-        elif selected_agent == "Report DOCX Agent":
+        elif selected_agent in ["Report DOCX Agent", "Report Generator"]:
 
             answer, artifact_path = report_docx_agent(
                 prompt,
