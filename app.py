@@ -203,6 +203,99 @@ MODE_HINTS = {
 }
 
 ARTIFACTS_DIR = Path(__file__).resolve().with_name("artifacts")
+PPTX_MIME_TYPE = (
+    "application/vnd.openxmlformats-officedocument."
+    "presentationml.presentation"
+)
+
+
+def format_file_size(size_bytes):
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.0f} KB"
+
+    return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def resolve_artifact_path(file_name):
+    artifact_path = ARTIFACTS_DIR / Path(file_name).name
+
+    try:
+        artifact_path.relative_to(ARTIFACTS_DIR)
+    except ValueError:
+        return None
+
+    return artifact_path
+
+
+def render_presentation_download(file_name, key_prefix):
+    artifact_path = resolve_artifact_path(file_name)
+
+    if not artifact_path or not artifact_path.exists():
+        st.warning(
+            "Презентация не найдена. Возможно, файл был удалён или "
+            "не сохранился после перезапуска приложения."
+        )
+        return
+
+    try:
+        file_bytes = artifact_path.read_bytes()
+    except Exception as error:
+        st.warning(
+            f"Не удалось открыть презентацию для скачивания. Детали: {error}"
+        )
+        return
+
+    if not file_bytes:
+        st.warning("Презентация повреждена или файл пустой.")
+        return
+
+    st.markdown(
+        f"📄 {artifact_path.name} ({format_file_size(len(file_bytes))})"
+    )
+    st.download_button(
+        "⬇ Download Presentation",
+        data=file_bytes,
+        file_name=artifact_path.name,
+        mime=PPTX_MIME_TYPE,
+        key=f"{key_prefix}_{artifact_path.name}",
+    )
+
+
+def render_chat_message(message, key_prefix):
+    artifact_pattern = r"<!--ARTIFACT:pptx:([^>]+)-->"
+    artifact_matches = re.findall(
+        artifact_pattern,
+        message
+    )
+    legacy_artifact_pattern = r"📎 Artifact:\s*([^\n]+\.pptx)"
+    artifact_matches.extend(
+        re.findall(
+            legacy_artifact_pattern,
+            message
+        )
+    )
+    visible_message = re.sub(
+        artifact_pattern,
+        "",
+        message
+    )
+    visible_message = re.sub(
+        legacy_artifact_pattern,
+        "",
+        visible_message
+    ).strip()
+
+    if visible_message:
+        st.markdown(visible_message)
+
+    for index, artifact_name in enumerate(artifact_matches):
+        render_presentation_download(
+            artifact_name.strip(),
+            f"{key_prefix}_{index}"
+        )
 
 
 def build_all_documents_text(documents):
@@ -790,24 +883,19 @@ else:
 
     for artifact_file in artifact_files:
 
-        with open(artifact_file, "rb") as file:
+        render_presentation_download(
+            artifact_file.name,
+            "download_artifact"
+        )
 
-            st.download_button(
-                f"⬇ Download PPTX · {artifact_file.name}",
-                data=file.read(),
-                file_name=artifact_file.name,
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "presentationml.presentation"
-                ),
-                key=f"download_artifact_{artifact_file.name}",
-            )
-
-for role, message in messages:
+for message_index, (role, message) in enumerate(messages):
 
     with st.chat_message(role):
 
-        st.markdown(message)
+        render_chat_message(
+            message,
+            f"chat_message_{message_index}"
+        )
 
 
 # ---------------------
@@ -1290,7 +1378,9 @@ if send_message and prompt.strip():
 
     if artifact_path:
 
-        assistant_message += f"\n\n📎 Artifact: {Path(artifact_path).name}"
+        assistant_message += (
+            f"\n\n<!--ARTIFACT:pptx:{Path(artifact_path).name}-->"
+        )
 
     if sources_used:
 
@@ -1330,18 +1420,16 @@ if send_message and prompt.strip():
 
         if artifact_path and Path(artifact_path).exists():
 
-            with open(artifact_path, "rb") as file:
+            render_presentation_download(
+                Path(artifact_path).name,
+                "download_new_presentation"
+            )
 
-                st.download_button(
-                    "⬇ Download PPTX",
-                    data=file.read(),
-                    file_name=Path(artifact_path).name,
-                    mime=(
-                        "application/vnd.openxmlformats-officedocument."
-                        "presentationml.presentation"
-                    ),
-                    key=f"download_new_presentation_{Path(artifact_path).name}",
-                )
+        elif artifact_path:
+
+            st.warning(
+                "Презентация была создана, но файл не найден для скачивания."
+            )
 
         if sources_used:
 
