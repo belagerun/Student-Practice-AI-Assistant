@@ -15,6 +15,7 @@ from gemini_client import (
 )
 from database import (
     delete_chat,
+    delete_brand_html_messages,
     delete_document,
     delete_document_version,
     delete_document_with_versions,
@@ -295,6 +296,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+delete_brand_html_messages()
+
 
 AI_MODES = [
     "General Assistant",
@@ -453,7 +456,21 @@ def render_presentation_download(file_name, key_prefix):
     render_artifact_download(file_name, key_prefix)
 
 
+def is_brand_html_message(message):
+    brand_markers = [
+        "brand-name",
+        "brand-subtitle",
+        "brand-context",
+        "brand-header",
+    ]
+
+    return any(marker in (message or "") for marker in brand_markers)
+
+
 def render_chat_message(message, key_prefix):
+    if is_brand_html_message(message):
+        return
+
     brand_html_pattern = (
         r"<div class=\"brand-header\">.*?"
         r"<div class=\"brand-name\">PracticeAI</div>.*?"

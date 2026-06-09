@@ -623,6 +623,21 @@ def load_chat_documents(chat_id):
     return cursor.fetchall()
 
 
+def delete_brand_html_messages():
+
+    cursor.execute(
+        """
+        DELETE FROM chats
+        WHERE message LIKE '%brand-name%'
+           OR message LIKE '%brand-subtitle%'
+           OR message LIKE '%brand-context%'
+           OR message LIKE '%brand-header%'
+        """
+    )
+
+    conn.commit()
+
+
 def get_document_versions(chat_id, file_name):
 
     cursor.execute(
