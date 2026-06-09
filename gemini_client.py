@@ -153,6 +153,19 @@ def _is_quota_error(error):
     return any(marker in error_text for marker in quota_markers)
 
 
+def _is_temporary_gemini_unavailable(error):
+    error_text = str(error).lower()
+    unavailable_markers = [
+        "503",
+        "unavailable",
+        "service unavailable",
+        "high demand",
+        "currently experiencing high demand",
+    ]
+
+    return any(marker in error_text for marker in unavailable_markers)
+
+
 def safe_generate_content(prompt):
     global _quota_blocked_until
 
@@ -167,42 +180,77 @@ def safe_generate_content(prompt):
             f"Попробуйте снова примерно через {seconds_left} секунд."
         )
 
-    try:
+    gemini_client = _get_gemini_client()
 
-        gemini_client = _get_gemini_client()
+    if gemini_client is None:
 
-        if gemini_client is None:
-
-            return (
-                "Gemini API-ключ не настроен. Добавьте ключ в Streamlit "
-                "Secrets или переменную окружения GEMINI_API_KEY."
-            )
-
-        response = gemini_client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt
+        return (
+            "Gemini API-ключ не настроен. Добавьте ключ в Streamlit "
+            "Secrets или переменную окружения GEMINI_API_KEY."
         )
 
-        return response.text
+    retry_delays = [2, 4, 8, 16]
+    max_attempts = len(retry_delays)
+    last_error = None
 
-    except Exception as error:
+    for attempt_index, delay in enumerate(retry_delays, start=1):
 
-        if not _is_quota_error(error):
+        try:
+
+            response = gemini_client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt
+            )
+
+            return response.text
+
+        except Exception as error:
+
+            last_error = error
+
+            if _is_quota_error(error):
+
+                retry_delay = _extract_retry_delay(error)
+                _quota_blocked_until = time.time() + (retry_delay or 60)
+                message = GEMINI_QUOTA_MESSAGE
+
+                if retry_delay:
+
+                    message += (
+                        f" Попробуйте снова примерно через {retry_delay} секунд."
+                    )
+
+                return message
+
+            if _is_temporary_gemini_unavailable(error):
+
+                if attempt_index < max_attempts:
+
+                    print(f"Retry {attempt_index}/{max_attempts}")
+                    time.sleep(delay)
+                    continue
+
+                return (
+                    "Gemini API временно перегружен. "
+                    "Попробуйте повторить запрос через несколько минут."
+                )
 
             return (
                 "Произошла ошибка при обращении к Gemini API. "
                 f"Попробуйте повторить запрос позже. Детали: {error}"
             )
 
-        retry_delay = _extract_retry_delay(error)
-        _quota_blocked_until = time.time() + (retry_delay or 60)
-        message = GEMINI_QUOTA_MESSAGE
+    if last_error and _is_temporary_gemini_unavailable(last_error):
 
-        if retry_delay:
+        return (
+            "Gemini API временно перегружен. "
+            "Попробуйте повторить запрос через несколько минут."
+        )
 
-            message += f" Попробуйте снова примерно через {retry_delay} секунд."
-
-        return message
+    return (
+        "Произошла ошибка при обращении к Gemini API. "
+        "Попробуйте повторить запрос позже."
+    )
 
 
 def is_quota_message(text):
