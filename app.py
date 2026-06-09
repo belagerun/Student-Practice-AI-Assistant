@@ -91,6 +91,26 @@ st.markdown(
         height: 42px;
     }
 
+    .artifact-download div.stDownloadButton > button {
+        width: auto;
+        height: auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #1f77d0;
+        text-decoration: none;
+        font-size: 0.92rem;
+        font-weight: 500;
+        box-shadow: none;
+    }
+
+    .artifact-download div.stDownloadButton > button:hover {
+        color: #145da0;
+        text-decoration: underline;
+        background: transparent;
+        border: 0;
+    }
+
     .chat-header {
         text-align: center;
         padding: 0.25rem 0 1rem;
@@ -203,10 +223,20 @@ MODE_HINTS = {
 }
 
 ARTIFACTS_DIR = Path(__file__).resolve().with_name("artifacts")
-PPTX_MIME_TYPE = (
-    "application/vnd.openxmlformats-officedocument."
-    "presentationml.presentation"
-)
+ARTIFACT_MIME_TYPES = {
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument."
+        "presentationml.presentation"
+    ),
+    ".pdf": "application/pdf",
+    ".docx": (
+        "application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document"
+    ),
+    ".txt": "text/plain",
+    ".png": "image/png",
+    ".csv": "text/csv",
+}
 
 
 def format_file_size(size_bytes):
@@ -230,38 +260,51 @@ def resolve_artifact_path(file_name):
     return artifact_path
 
 
-def render_presentation_download(file_name, key_prefix):
+def render_artifact_download(file_name, key_prefix):
     artifact_path = resolve_artifact_path(file_name)
 
     if not artifact_path or not artifact_path.exists():
-        st.warning(
-            "Презентация не найдена. Возможно, файл был удалён или "
-            "не сохранился после перезапуска приложения."
-        )
+        st.warning("Artifact not found")
         return
 
     try:
         file_bytes = artifact_path.read_bytes()
     except Exception as error:
-        st.warning(
-            f"Не удалось открыть презентацию для скачивания. Детали: {error}"
-        )
+        st.warning(f"Artifact not found. Details: {error}")
         return
 
     if not file_bytes:
-        st.warning("Презентация повреждена или файл пустой.")
+        st.warning("Artifact not found")
         return
 
     st.markdown(
         f"📄 {artifact_path.name} ({format_file_size(len(file_bytes))})"
     )
-    st.download_button(
-        "⬇ Download Presentation",
-        data=file_bytes,
-        file_name=artifact_path.name,
-        mime=PPTX_MIME_TYPE,
-        key=f"{key_prefix}_{artifact_path.name}",
-    )
+
+    with st.container():
+        st.markdown(
+            '<div class="artifact-download">',
+            unsafe_allow_html=True,
+        )
+        st.download_button(
+            "🔗 Download",
+            data=file_bytes,
+            file_name=artifact_path.name,
+            mime=ARTIFACT_MIME_TYPES.get(
+                artifact_path.suffix.lower(),
+                "application/octet-stream"
+            ),
+            key=f"{key_prefix}_{artifact_path.name}",
+            use_container_width=False,
+        )
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def render_presentation_download(file_name, key_prefix):
+    render_artifact_download(file_name, key_prefix)
 
 
 def render_chat_message(message, key_prefix):
