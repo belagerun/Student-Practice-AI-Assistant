@@ -549,21 +549,32 @@ def web_search_agent(prompt, context):
         5
     )
 
-    if not search_result["ok"]:
+    search_available = (
+        search_result.get("ok")
+        or search_result.get("success")
+    )
+
+    if not search_available:
 
         return (
-            search_result["error"],
+            search_result.get(
+                "error",
+                search_result.get(
+                    "message",
+                    "Web search is not configured yet."
+                )
+            ),
             []
         )
 
     sources = []
     web_context = ""
 
-    for index, result in enumerate(search_result["results"], start=1):
-        title = result["title"]
-        url = result["url"]
-        snippet = result["snippet"]
-        content = result["content"]
+    for index, result in enumerate(search_result.get("results", []), start=1):
+        title = result.get("title", f"Source {index}")
+        url = result.get("url", "")
+        snippet = result.get("snippet", "")
+        content = result.get("content", snippet)
 
         sources.append(
             f"{title} - {url}"
