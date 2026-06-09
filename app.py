@@ -2,6 +2,7 @@ import hashlib
 import base64
 import html
 import re
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -10,9 +11,11 @@ from file_reader import read_file
 from gemini_client import (
     extract_user_memories,
     generate_chat_title,
+    clear_stream_callback,
     needs_docx_report,
     needs_web_search,
     router_agent,
+    set_stream_callback,
 )
 from database import (
     delete_chat,
@@ -544,16 +547,7 @@ def is_docx_refusal_message(message):
     return any(marker in lowered_message for marker in refusal_markers)
 
 
-def render_chat_message(role, message, key_prefix=None):
-    if is_brand_html_message(message):
-        return
-
-    if role == "assistant" and is_docx_refusal_message(message):
-        return
-
-    if key_prefix is None:
-        key_prefix = f"{role}_message"
-
+def parse_chat_message_parts(message):
     brand_html_pattern = (
         r"<div class=\"brand-header\">.*?"
         r"<div class=\"brand-name\">PracticeAI</div>.*?"
@@ -594,6 +588,36 @@ def render_chat_message(role, message, key_prefix=None):
         visible_message
     ).strip()
 
+    return visible_message, artifact_matches
+
+
+def stream_text(text, delay=0.015):
+    placeholder = st.empty()
+    words = re.split(r"(\s+)", text or "")
+    rendered_text = ""
+
+    for word in words:
+        rendered_text += word
+
+        if word.strip():
+            placeholder.markdown(rendered_text)
+            time.sleep(delay)
+
+    placeholder.markdown(rendered_text)
+
+
+def render_chat_message(role, message, key_prefix=None):
+    if is_brand_html_message(message):
+        return
+
+    if role == "assistant" and is_docx_refusal_message(message):
+        return
+
+    if key_prefix is None:
+        key_prefix = f"{role}_message"
+
+    visible_message, artifact_matches = parse_chat_message_parts(message)
+
     if visible_message:
         st.markdown(visible_message)
 
@@ -602,6 +626,42 @@ def render_chat_message(role, message, key_prefix=None):
             artifact_name.strip(),
             f"{key_prefix}_{index}"
         )
+
+
+def render_streaming_chat_message(role, message, key_prefix=None):
+    if is_brand_html_message(message):
+        return
+
+    if role == "assistant" and is_docx_refusal_message(message):
+        return
+
+    if key_prefix is None:
+        key_prefix = f"{role}_stream_message"
+
+    visible_message, artifact_matches = parse_chat_message_parts(message)
+
+    if visible_message:
+        stream_text(visible_message)
+
+    for index, artifact_name in enumerate(artifact_matches):
+        render_presentation_download(
+            artifact_name.strip(),
+            f"{key_prefix}_{index}"
+        )
+
+
+def stream_file_agent_status():
+    status_placeholder = st.empty()
+    statuses = [
+        "Preparing content...",
+        "Generating file...",
+        "Saving artifact...",
+        "Done.",
+    ]
+
+    for status in statuses:
+        status_placeholder.markdown(status)
+        time.sleep(0.25)
 
 
 def build_all_documents_text(documents):
@@ -1516,6 +1576,9 @@ if send_message and prompt.strip():
     sources_used = []
     web_sources_used = []
     artifact_path = ""
+    assistant_live_container = None
+    live_stream_placeholder = None
+    streamed_state = {"text": ""}
 
     if (
         st.session_state.task_mode == "Анализ PDF"
@@ -1693,17 +1756,45 @@ if send_message and prompt.strip():
                 f"\nSelected document: {selected_document_name}\n"
             )
 
-        selected_agent, selected_mode, answer, web_sources_used, artifact_path = router_agent(
-            prompt,
-            bool(chat_documents),
-            st.session_state.mode_selection_type == "Auto",
-            context_text,
-            document_text[:30000],
-            st.session_state.ai_mode,
-            st.session_state.auto_web_search,
-            force_web_search=st.session_state.task_mode == "🌐 Web Search",
-            document_sources=sources_used
+        should_try_real_streaming = not (
+            presentation_requested
+            or report_docx_requested
         )
+
+        if should_try_real_streaming:
+
+            assistant_live_container = st.chat_message("assistant")
+
+            with assistant_live_container:
+
+                live_stream_placeholder = st.empty()
+
+            def update_live_stream(streamed_text):
+                streamed_state["text"] = streamed_text
+
+                if live_stream_placeholder:
+
+                    live_stream_placeholder.markdown(streamed_text)
+
+            set_stream_callback(update_live_stream)
+
+        try:
+
+            selected_agent, selected_mode, answer, web_sources_used, artifact_path = router_agent(
+                prompt,
+                bool(chat_documents),
+                st.session_state.mode_selection_type == "Auto",
+                context_text,
+                document_text[:30000],
+                st.session_state.ai_mode,
+                st.session_state.auto_web_search,
+                force_web_search=st.session_state.task_mode == "🌐 Web Search",
+                document_sources=sources_used
+            )
+
+        finally:
+
+            clear_stream_callback()
 
         st.session_state.ai_mode = selected_mode
 
@@ -1746,25 +1837,51 @@ if send_message and prompt.strip():
 
     assistant_message += f"\n\n{answer}"
 
+    if len(history) == 0:
+
+        st.session_state.chat_settings_open[settings_key] = False
+
+    if assistant_live_container is None:
+
+        assistant_live_container = st.chat_message("assistant")
+
+    with assistant_live_container:
+
+        if artifact_path and selected_agent in [
+            "Presentation Agent",
+            "Report DOCX Agent",
+            "Report Generator",
+        ]:
+
+            stream_file_agent_status()
+
+        if streamed_state.get("text") and live_stream_placeholder:
+
+            visible_message, artifact_matches = parse_chat_message_parts(
+                assistant_message
+            )
+            live_stream_placeholder.markdown(visible_message)
+
+            for index, artifact_name in enumerate(artifact_matches):
+
+                render_presentation_download(
+                    artifact_name.strip(),
+                    f"new_assistant_message_{index}"
+                )
+
+        else:
+
+            render_streaming_chat_message(
+                "assistant",
+                assistant_message,
+                "new_assistant_message"
+            )
+
     save_message(
         st.session_state.current_chat,
         "assistant",
         assistant_message
     )
-
-    if len(history) == 0:
-
-        st.session_state.chat_settings_open[settings_key] = False
-
-    with st.chat_message(
-        "assistant"
-    ):
-
-        render_chat_message(
-            "assistant",
-            assistant_message,
-            "new_assistant_message"
-        )
 
     st.session_state.message_nonce += 1
 

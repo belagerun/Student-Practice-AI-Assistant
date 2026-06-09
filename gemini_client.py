@@ -93,6 +93,19 @@ REPORT_DOCX_CONTENT_WORDS = [
 ]
 
 _quota_blocked_until = 0
+_stream_callback = None
+
+
+def set_stream_callback(callback):
+    global _stream_callback
+
+    _stream_callback = callback
+
+
+def clear_stream_callback():
+    global _stream_callback
+
+    _stream_callback = None
 
 
 def configure_gemini_api_key(api_key):
@@ -234,6 +247,40 @@ def safe_generate_content(prompt):
     for attempt_index, delay in enumerate(retry_delays, start=1):
 
         try:
+
+            if _stream_callback:
+
+                streamed_text = ""
+
+                try:
+                    if hasattr(gemini_client.models, "generate_content_stream"):
+                        stream = gemini_client.models.generate_content_stream(
+                            model=MODEL_NAME,
+                            contents=prompt
+                        )
+                    else:
+                        stream = gemini_client.models.generate_content(
+                            model=MODEL_NAME,
+                            contents=prompt,
+                            stream=True
+                        )
+
+                    for chunk in stream:
+                        chunk_text = getattr(chunk, "text", "") or ""
+
+                        if not chunk_text:
+                            continue
+
+                        streamed_text += chunk_text
+                        _stream_callback(streamed_text)
+
+                    if streamed_text:
+
+                        return streamed_text
+
+                except TypeError:
+
+                    pass
 
             response = gemini_client.models.generate_content(
                 model=MODEL_NAME,
