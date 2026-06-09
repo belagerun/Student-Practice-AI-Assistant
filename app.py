@@ -3,6 +3,7 @@ import base64
 import html
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -235,6 +236,26 @@ st.markdown(
     .artifact-link a:hover {
         color: #145da0;
         text-decoration: underline;
+    }
+
+    .resource-status {
+        color: var(--text-color);
+        opacity: 0.72;
+        font-size: 0.95rem;
+        padding: 0.35rem 0 0.6rem;
+    }
+
+    .resource-row {
+        background: rgba(128, 128, 128, 0.08);
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .resource-meta {
+        color: var(--text-color);
+        opacity: 0.62;
+        font-size: 0.85rem;
     }
 
     .chat-header {
@@ -519,6 +540,66 @@ def render_artifact_download(file_name, key_prefix):
 
 def render_presentation_download(file_name, key_prefix):
     render_artifact_download(file_name, key_prefix)
+
+
+def get_artifact_type(file_path):
+    return file_path.suffix.lower().lstrip(".").upper() or "FILE"
+
+
+def get_message_artifact_names(messages):
+    artifact_names = []
+    artifact_pattern = r"<!--ARTIFACT:(?:pptx|docx|pdf|txt|png|csv):([^>]+)-->"
+    legacy_artifact_pattern = r"📎 Artifact:\s*([^\n]+\.(?:pptx|docx|pdf|txt|png|csv))"
+
+    for role, message in messages:
+        if role != "assistant":
+            continue
+
+        artifact_names.extend(
+            re.findall(
+                artifact_pattern,
+                message or ""
+            )
+        )
+        artifact_names.extend(
+            re.findall(
+                legacy_artifact_pattern,
+                message or ""
+            )
+        )
+
+    seen = set()
+    unique_names = []
+
+    for artifact_name in artifact_names:
+        safe_name = Path(artifact_name.strip()).name
+
+        if safe_name and safe_name not in seen:
+            seen.add(safe_name)
+            unique_names.append(safe_name)
+
+    return unique_names
+
+
+def load_chat_artifacts(messages):
+    artifact_files = []
+
+    for artifact_name in get_message_artifact_names(messages):
+        artifact_path = resolve_artifact_path(artifact_name)
+
+        if (
+            artifact_path
+            and artifact_path.exists()
+            and artifact_path.suffix.lower() in ARTIFACT_MIME_TYPES
+        ):
+            artifact_files.append(artifact_path)
+
+    artifact_files.sort(
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )
+
+    return artifact_files
 
 
 def is_brand_html_message(message):
@@ -1166,94 +1247,194 @@ messages = load_chat(
     st.session_state.current_chat
 )
 
-st.markdown("### 📁 Documents")
+artifact_files = load_chat_artifacts(messages)
+documents_count = len(chat_documents)
+artifacts_count = len(artifact_files)
+
+st.markdown(
+    (
+        '<div class="resource-status">'
+        f"📁 Documents: {documents_count} &nbsp;&nbsp;&nbsp; "
+        f"📦 Artifacts: {artifacts_count}"
+        "</div>"
+    ),
+    unsafe_allow_html=True,
+)
+
+documents_expanded = (
+    documents_count > 0
+    and documents_count <= 1
+    and len(messages) == 0
+)
+artifacts_expanded = (
+    artifacts_count > 0
+    and artifacts_count <= 1
+    and len(messages) == 0
+)
 
 if not chat_documents:
 
-    st.caption("Документы не загружены")
+    st.caption("No documents uploaded yet")
 
-for document_id, file_name, file_content, uploaded_at, version_number in chat_documents:
+else:
 
     with st.expander(
-        f"📄 {file_name}",
-        expanded=False
+        f"📁 Documents ({documents_count})",
+        expanded=documents_expanded
     ):
 
-        versions = get_document_versions(
-            st.session_state.current_chat,
-            file_name
-        )
+        for document_id, file_name, file_content, uploaded_at, version_number in chat_documents:
 
-        st.caption(f"{len(versions)} version(s)")
-
-        for version_id, current_version, current_content, current_uploaded_at in versions:
-
-            st.markdown(f"**v{current_version}** — {current_uploaded_at}")
-
-            st.text_area(
-                "Document content",
-                value=current_content[:10000],
-                height=180,
-                key=f"document_preview_{document_id}_{current_version}",
-                disabled=True,
-            )
-
-            if st.button(
-                "Delete version",
-                key=f"delete_document_version_{document_id}_{current_version}"
-            ):
-
-                delete_document_version(
-                    st.session_state.current_chat,
-                    file_name,
-                    current_version
-                )
-
-                st.rerun()
-
-            st.markdown("---")
-
-        if st.button(
-            "Delete document with all versions",
-            key=f"delete_document_{document_id}"
-        ):
-
-            delete_document_with_versions(
+            versions = get_document_versions(
                 st.session_state.current_chat,
                 file_name
             )
 
-            st.rerun()
+            st.markdown(
+                (
+                    '<div class="resource-row">'
+                    f"<strong>📄 {html.escape(file_name)}</strong>"
+                    f'<div class="resource-meta">'
+                    f"{len(versions)} version(s) · Uploaded: {html.escape(str(uploaded_at))}"
+                    "</div>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
 
-st.markdown("### 📁 Artifacts")
+            analyze_col, delete_doc_col = st.columns([1, 1])
 
-if not ARTIFACTS_DIR.exists():
+            with analyze_col:
 
-    st.caption("Артефакты пока не созданы")
+                if st.button(
+                    "Analyze",
+                    key=f"analyze_document_{document_id}"
+                ):
+
+                    st.session_state.task_mode = "Анализ PDF"
+                    settings_key = str(st.session_state.current_chat)
+                    st.session_state.chat_settings_open[settings_key] = True
+                    st.rerun()
+
+            with delete_doc_col:
+
+                if st.button(
+                    "Delete",
+                    key=f"delete_document_{document_id}"
+                ):
+
+                    delete_document_with_versions(
+                        st.session_state.current_chat,
+                        file_name
+                    )
+
+                    st.rerun()
+
+            for version_id, current_version, current_content, current_uploaded_at in versions:
+
+                preview_key = f"show_document_preview_{document_id}_{current_version}"
+
+                version_col, preview_col, delete_version_col = st.columns(
+                    [2.1, 0.8, 0.9]
+                )
+
+                with version_col:
+
+                    st.markdown(
+                        f"**v{current_version}** · {current_uploaded_at}"
+                    )
+
+                with preview_col:
+
+                    if st.button(
+                        "Preview",
+                        key=f"preview_document_version_{document_id}_{current_version}"
+                    ):
+
+                        st.session_state[preview_key] = (
+                            not st.session_state.get(preview_key, False)
+                        )
+
+                with delete_version_col:
+
+                    if st.button(
+                        "Delete",
+                        key=f"delete_document_version_{document_id}_{current_version}"
+                    ):
+
+                        delete_document_version(
+                            st.session_state.current_chat,
+                            file_name,
+                            current_version
+                        )
+
+                        st.rerun()
+
+                if st.session_state.get(preview_key, False):
+
+                    st.text_area(
+                        "Document content",
+                        value=current_content[:10000],
+                        height=180,
+                        key=f"document_preview_{document_id}_{current_version}",
+                        disabled=True,
+                    )
+
+                st.markdown("---")
+
+if not artifact_files:
+
+    st.caption("No artifacts created yet")
 
 else:
 
-    artifact_files = sorted(
-        [
-            path
-            for path in ARTIFACTS_DIR.iterdir()
-            if path.is_file()
-            and path.suffix.lower() in ARTIFACT_MIME_TYPES
-        ],
-        key=lambda path: path.stat().st_mtime,
-        reverse=True
-    )
+    with st.expander(
+        f"📦 Artifacts ({artifacts_count})",
+        expanded=artifacts_expanded
+    ):
 
-    if not artifact_files:
+        for artifact_index, artifact_file in enumerate(artifact_files):
 
-        st.caption("Артефакты пока не созданы")
+            file_stat = artifact_file.stat()
+            created_at = datetime.fromtimestamp(file_stat.st_mtime).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+            artifact_type = get_artifact_type(artifact_file)
 
-    for artifact_file in artifact_files:
+            st.markdown(
+                (
+                    '<div class="resource-row">'
+                    f"<strong>📄 {html.escape(artifact_file.name)}</strong>"
+                    f'<div class="resource-meta">'
+                    f"{artifact_type} · {format_file_size(file_stat.st_size)} · Created: {created_at}"
+                    "</div>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
 
-        render_presentation_download(
-            artifact_file.name,
-            "download_artifact"
-        )
+            link_col, delete_col = st.columns([3, 1])
+
+            with link_col:
+
+                render_presentation_download(
+                    artifact_file.name,
+                    "download_artifact"
+                )
+
+            with delete_col:
+
+                if st.button(
+                    "Delete",
+                    key=f"delete_artifact_{artifact_index}_{artifact_file.stem}"
+                ):
+
+                    try:
+                        artifact_file.unlink()
+                    except Exception as error:
+                        st.warning(f"Artifact not found. Details: {error}")
+
+                    st.rerun()
 
 for message_index, (role, message) in enumerate(messages):
 
