@@ -67,26 +67,46 @@ st.markdown(
 
     [data-testid="stAppViewContainer"] {
         padding-top: 0;
-        --sidebar-layout-width: 300px;
+        --sidebar-layout-width: 0px;
     }
 
     [data-testid="stAppViewContainer"] .main {
         padding-top: 0;
     }
 
-    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] {
+    body:has([data-testid="stSidebar"][aria-expanded="true"]) [data-testid="stAppViewContainer"],
+    body:not(:has([data-testid="stSidebarCollapsedControl"])) [data-testid="stAppViewContainer"] {
+        --sidebar-layout-width: 300px;
+    }
+
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"],
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stAppViewContainer"] {
         --sidebar-layout-width: 0px;
     }
 
-    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] .main {
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stAppViewContainer"] .main,
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stMain"],
+    body:has([data-testid="stSidebarCollapsedControl"]) main,
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stAppViewContainer"] .main,
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"],
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) main {
+        left: 0 !important;
         margin-left: 0 !important;
+        padding-left: 0 !important;
+        transform: none !important;
         width: 100vw !important;
+        max-width: 100vw !important;
     }
 
-    body:has([data-testid="stSidebarCollapsedControl"]) main .block-container {
+    body:has([data-testid="stSidebarCollapsedControl"]) main .block-container,
+    body:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stMain"] .block-container,
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) main .block-container,
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) [data-testid="stMain"] .block-container {
         max-width: 1000px;
         margin-left: auto !important;
         margin-right: auto !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
     }
 
     [data-testid="stSidebar"] {
@@ -228,6 +248,14 @@ st.markdown(
         backdrop-filter: blur(12px);
         border-top: 1px solid rgba(128, 128, 128, 0.22);
         padding: 0.35rem 0 0.55rem;
+    }
+
+    body:has([data-testid="stSidebarCollapsedControl"]) .st-key-bottom_composer,
+    body:has([data-testid="stSidebar"][aria-expanded="false"]) .st-key-bottom_composer {
+        width: min(1000px, calc(100vw - 40px)) !important;
+        left: 50% !important;
+        right: auto !important;
+        transform: translateX(-50%) !important;
     }
 
     .st-key-bottom_composer hr {
