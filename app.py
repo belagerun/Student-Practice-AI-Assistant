@@ -352,15 +352,17 @@ def render_brand_header(context_text=""):
     if context_text:
         context_html = f'<div class="brand-context">{html.escape(context_text)}</div>'
 
-    st.markdown(
-        f"""
+    brand_html = f"""
         <div class="brand-header">
             {logo_html}
             <div class="brand-name">PracticeAI</div>
             <div class="brand-subtitle">Student Practice AI Assistant</div>
             {context_html}
         </div>
-        """,
+        """
+
+    st.markdown(
+        brand_html,
         unsafe_allow_html=True,
     )
 
@@ -424,6 +426,11 @@ def render_presentation_download(file_name, key_prefix):
 
 
 def render_chat_message(message, key_prefix):
+    brand_html_pattern = (
+        r"<div class=\"brand-header\">.*?"
+        r"<div class=\"brand-name\">PracticeAI</div>.*?"
+        r"</div>"
+    )
     artifact_pattern = r"<!--ARTIFACT:pptx:([^>]+)-->"
     artifact_matches = re.findall(
         artifact_pattern,
@@ -437,9 +444,21 @@ def render_chat_message(message, key_prefix):
         )
     )
     visible_message = re.sub(
+        brand_html_pattern,
+        "",
+        message,
+        flags=re.DOTALL,
+    )
+    visible_message = re.sub(
+        r"<div class=\"brand-(?:name|subtitle|context)\">.*?</div>",
+        "",
+        visible_message,
+        flags=re.DOTALL,
+    )
+    visible_message = re.sub(
         artifact_pattern,
         "",
-        message
+        visible_message
     )
     visible_message = re.sub(
         legacy_artifact_pattern,
