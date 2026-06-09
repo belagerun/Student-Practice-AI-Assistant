@@ -1703,8 +1703,8 @@ if send_message and prompt.strip():
             document_text[:30000],
             st.session_state.ai_mode,
             st.session_state.auto_web_search,
-            st.session_state.task_mode == "🌐 Web Search",
-            sources_used
+            force_web_search=st.session_state.task_mode == "🌐 Web Search",
+            document_sources=sources_used
         )
 
         st.session_state.ai_mode = selected_mode

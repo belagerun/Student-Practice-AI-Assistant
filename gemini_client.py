@@ -34,6 +34,26 @@ GEMINI_QUOTA_MESSAGE = (
     "Попробуйте позже или подключите другой API-ключ."
 )
 
+REPORT_DOCX_WORDS = [
+    "создай отчёт",
+    "создай отчет",
+    "сделай отчёт",
+    "сделай отчет",
+    "сгенерируй отчёт",
+    "сгенерируй отчет",
+    "напиши отчёт по документу",
+    "напиши отчет по документу",
+    "сделай docx",
+    "создай docx",
+    "docx отчёт",
+    "docx отчет",
+    "docx report",
+    "create report",
+    "generate report",
+    "generate docx report",
+    "create docx report",
+]
+
 _quota_blocked_until = 0
 
 
@@ -497,33 +517,13 @@ User message:
         "slides",
     ]
 
-    report_docx_words = [
-        "создай отчёт",
-        "создай отчет",
-        "сделай отчёт",
-        "сделай отчет",
-        "сгенерируй отчёт",
-        "сгенерируй отчет",
-        "напиши отчёт по документу",
-        "напиши отчет по документу",
-        "сделай docx",
-        "создай docx",
-        "docx отчёт",
-        "docx отчет",
-        "docx report",
-        "create report",
-        "generate report",
-        "generate docx report",
-        "create docx report",
-    ]
-
     if needs_web_search(message):
         return "Web Search"
 
     if any(word in lowered_message for word in presentation_words):
         return "Presentation Generator"
 
-    if any(word in lowered_message for word in report_docx_words):
+    if any(word in lowered_message for word in REPORT_DOCX_WORDS):
         return "Report DOCX Generator"
 
     if (
@@ -1041,7 +1041,7 @@ def _agent_from_keywords(prompt, document_attached, allow_web_search=True):
     if any(word in lowered_prompt for word in presentation_words):
         return "Presentation Agent"
 
-    if any(word in lowered_prompt for word in report_docx_words):
+    if any(word in lowered_prompt for word in REPORT_DOCX_WORDS):
         return "Report DOCX Agent"
 
     if document_attached:
@@ -1073,6 +1073,21 @@ def _rule_based_agent(prompt, document_attached):
     return None
 
 
+def _router_response(selected_agent, answer, web_sources=None, artifact_path=None):
+    selected_mode = AGENT_TO_MODE.get(
+        selected_agent,
+        DEFAULT_AI_MODE
+    )
+
+    return (
+        selected_agent,
+        selected_mode,
+        answer,
+        web_sources or [],
+        artifact_path
+    )
+
+
 def router_agent(
     prompt,
     document_attached,
@@ -1084,108 +1099,139 @@ def router_agent(
     force_web_search=False,
     document_sources=None
 ):
+    try:
 
-    if force_web_search or manual_mode == "Web Search":
-
-        selected_agent = "Web Search Agent"
-
-    elif manual_mode == "Presentation Generator":
-
-        selected_agent = "Presentation Agent"
-
-    elif manual_mode == "Report DOCX Generator":
-
-        selected_agent = "Report DOCX Agent"
-
-    elif auto_mode:
-
-        if auto_web_search and needs_web_search(prompt):
+        if force_web_search or manual_mode == "Web Search":
 
             selected_agent = "Web Search Agent"
 
+        elif manual_mode == "Presentation Generator":
+
+            selected_agent = "Presentation Agent"
+
+        elif manual_mode == "Report DOCX Generator":
+
+            selected_agent = "Report DOCX Agent"
+
+        elif auto_mode:
+
+            if auto_web_search and needs_web_search(prompt):
+
+                selected_agent = "Web Search Agent"
+
+            else:
+
+                selected_agent = _agent_from_keywords(
+                    prompt,
+                    document_attached,
+                    False
+                )
+
         else:
 
-            selected_agent = _agent_from_keywords(
-                prompt,
-                document_attached,
-                False
+            selected_agent = MODE_TO_AGENT.get(
+                manual_mode,
+                "General Agent"
             )
 
-    else:
+        if selected_agent == "Programming Agent":
 
-        selected_agent = MODE_TO_AGENT.get(
-            manual_mode,
-            "General Agent"
+            answer = programming_agent(
+                prompt,
+                context
+            )
+
+        elif selected_agent == "Report Agent":
+
+            answer = report_agent(
+                prompt,
+                context
+            )
+
+        elif selected_agent == "Document Agent":
+
+            answer = document_agent(
+                prompt,
+                document_text,
+                context
+            )
+
+        elif selected_agent == "Internship Agent":
+
+            answer = internship_agent(
+                prompt,
+                context
+            )
+
+        elif selected_agent == "Web Search Agent":
+
+            answer, web_sources = web_search_agent(
+                prompt,
+                context
+            )
+
+            return _router_response(
+                selected_agent,
+                answer,
+                web_sources,
+                None
+            )
+
+        elif selected_agent == "Presentation Agent":
+
+            answer, artifact_path = presentation_agent(
+                prompt,
+                context,
+                document_text
+            )
+
+            return _router_response(
+                selected_agent,
+                answer,
+                [],
+                artifact_path
+            )
+
+        elif selected_agent == "Report DOCX Agent":
+
+            answer, artifact_path = report_docx_agent(
+                prompt,
+                context,
+                document_text,
+                document_sources
+            )
+
+            return _router_response(
+                selected_agent,
+                answer,
+                [],
+                artifact_path
+            )
+
+        else:
+
+            selected_agent = "General Agent"
+            answer = general_agent(
+                prompt,
+                context
+            )
+
+        return _router_response(
+            selected_agent,
+            answer,
+            [],
+            None
         )
 
-    if selected_agent == "Programming Agent":
+    except Exception as error:
 
-        answer = programming_agent(
-            prompt,
-            context
+        return (
+            "General Agent",
+            DEFAULT_AI_MODE,
+            f"Произошла ошибка при выборе агента. Детали: {error}",
+            [],
+            None
         )
-
-    elif selected_agent == "Report Agent":
-
-        answer = report_agent(
-            prompt,
-            context
-        )
-
-    elif selected_agent == "Document Agent":
-
-        answer = document_agent(
-            prompt,
-            document_text,
-            context
-        )
-
-    elif selected_agent == "Internship Agent":
-
-        answer = internship_agent(
-            prompt,
-            context
-        )
-
-    elif selected_agent == "Web Search Agent":
-
-        answer, web_sources = web_search_agent(
-            prompt,
-            context
-        )
-
-        return selected_agent, AGENT_TO_MODE[selected_agent], answer, web_sources, ""
-
-    elif selected_agent == "Presentation Agent":
-
-        answer, artifact_path = presentation_agent(
-            prompt,
-            context,
-            document_text
-        )
-
-        return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], artifact_path
-
-    elif selected_agent == "Report DOCX Agent":
-
-        answer, artifact_path = report_docx_agent(
-            prompt,
-            context,
-            document_text,
-            document_sources
-        )
-
-        return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], artifact_path
-
-    else:
-
-        selected_agent = "General Agent"
-        answer = general_agent(
-            prompt,
-            context
-        )
-
-    return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], ""
 
 
 def run_task(
