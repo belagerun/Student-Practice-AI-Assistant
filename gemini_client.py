@@ -2,7 +2,6 @@ import os
 import re
 import time
 
-from google import genai
 from presentation_generator import generate_presentation
 from web_search import search_web
 
@@ -24,19 +23,10 @@ def _get_streamlit_secret(name, default=""):
     except Exception:
         return default
 
-MODEL_NAME = (
-    _get_streamlit_secret("GEMINI_MODEL")
-    or os.getenv("GEMINI_MODEL")
-    or "gemini-2.5-flash"
-)
+MODEL_NAME = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+API_KEY = os.getenv("GEMINI_API_KEY") or ""
 
-API_KEY = (
-    _get_streamlit_secret("GEMINI_API_KEY")
-    or os.getenv("GEMINI_API_KEY")
-    or ""
-)
-
-client = genai.Client(api_key=API_KEY) if API_KEY else None
+client = None
 
 GEMINI_QUOTA_MESSAGE = (
     "Лимит Gemini API временно исчерпан. "
@@ -59,7 +49,43 @@ def configure_gemini_api_key(api_key):
 
     API_KEY = cleaned_key
     _quota_blocked_until = 0
-    client = genai.Client(api_key=API_KEY)
+    client = None
+
+
+def _get_gemini_client():
+    global API_KEY
+    global MODEL_NAME
+    global client
+
+    current_api_key = (
+        _get_streamlit_secret("GEMINI_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or ""
+    )
+    current_model_name = (
+        _get_streamlit_secret("GEMINI_MODEL")
+        or os.getenv("GEMINI_MODEL")
+        or "gemini-2.5-flash"
+    )
+
+    if current_api_key != API_KEY:
+
+        API_KEY = current_api_key
+        client = None
+
+    MODEL_NAME = current_model_name
+
+    if not API_KEY:
+
+        return None
+
+    if client is None:
+
+        from google import genai
+
+        client = genai.Client(api_key=API_KEY)
+
+    return client
 
 
 def _extract_retry_delay(error):
@@ -109,13 +135,6 @@ def _is_quota_error(error):
 def safe_generate_content(prompt):
     global _quota_blocked_until
 
-    if not API_KEY or client is None:
-
-        return (
-            "Gemini API-ключ не настроен. Добавьте ключ в переменную "
-            "окружения GEMINI_API_KEY или GOOGLE_API_KEY."
-        )
-
     now = time.time()
 
     if now < _quota_blocked_until:
@@ -129,7 +148,16 @@ def safe_generate_content(prompt):
 
     try:
 
-        response = client.models.generate_content(
+        gemini_client = _get_gemini_client()
+
+        if gemini_client is None:
+
+            return (
+                "Gemini API-ключ не настроен. Добавьте ключ в Streamlit "
+                "Secrets или переменную окружения GEMINI_API_KEY."
+            )
+
+        response = gemini_client.models.generate_content(
             model=MODEL_NAME,
             contents=prompt
         )
