@@ -3,6 +3,7 @@ import re
 import time
 
 from presentation_generator import generate_presentation
+from report_generator import generate_docx_report, make_report_output_path
 from web_search import search_web
 
 try:
@@ -224,6 +225,11 @@ You are Presentation Generator.
 Create clear PowerPoint slide structures with concise titles and 5-7 bullet points per slide.
 Use uploaded document context when available.
 """,
+    "Report DOCX Generator": """
+You are Report DOCX Generator.
+Create structured report content for DOCX files with clear sections, formal language, introduction, main analysis, conclusion, and source notes when available.
+Use uploaded document context when available.
+""",
 }
 
 DEFAULT_AI_MODE = "General Assistant"
@@ -236,6 +242,7 @@ AGENT_TO_MODE = {
     "Internship Agent": "Internship Assistant",
     "Web Search Agent": "Web Search",
     "Presentation Agent": "Presentation Generator",
+    "Report DOCX Agent": "Report DOCX Generator",
     "General Agent": "General Assistant",
 }
 
@@ -379,6 +386,7 @@ Available modes:
 - Internship Assistant
 - Web Search
 - Presentation Generator
+- Report DOCX Generator
 - General Assistant
 
 Rules:
@@ -388,6 +396,7 @@ Rules:
 - Internship Assistant: internship tasks, practice reports, workplace tasks, student practice.
 - Web Search: latest news, recent facts, current versions, winners, prices, schedules, releases.
 - Presentation Generator: PowerPoint, PPTX, slides, presentation creation.
+- Report DOCX Generator: create downloadable DOCX reports, generate docx report files.
 - General Assistant: anything else.
 - If a document is attached and the user asks about file content, prefer Document Analyst.
 
@@ -488,11 +497,34 @@ User message:
         "slides",
     ]
 
+    report_docx_words = [
+        "создай отчёт",
+        "создай отчет",
+        "сделай отчёт",
+        "сделай отчет",
+        "сгенерируй отчёт",
+        "сгенерируй отчет",
+        "напиши отчёт по документу",
+        "напиши отчет по документу",
+        "сделай docx",
+        "создай docx",
+        "docx отчёт",
+        "docx отчет",
+        "docx report",
+        "create report",
+        "generate report",
+        "generate docx report",
+        "create docx report",
+    ]
+
     if needs_web_search(message):
         return "Web Search"
 
     if any(word in lowered_message for word in presentation_words):
         return "Presentation Generator"
+
+    if any(word in lowered_message for word in report_docx_words):
+        return "Report DOCX Generator"
 
     if (
         document_attached
@@ -752,6 +784,105 @@ Source material:
     )
 
 
+def report_docx_agent(prompt, context, document_text="", sources=None):
+    source_text = document_text.strip()
+    prompt_text = prompt.strip()
+    sources = sources or []
+
+    if not prompt_text and not source_text:
+
+        return (
+            "Не удалось создать отчёт: запрос пустой и документы не выбраны.",
+            ""
+        )
+
+    if document_text and not source_text:
+
+        return (
+            "Не удалось создать отчёт: не найдено релевантных фрагментов документа.",
+            ""
+        )
+
+    source_material = source_text or (
+        "Use the user request and conversation context as the report basis."
+    )
+
+    report_prompt = f"""
+Create DOCX report content in Russian.
+
+Rules:
+- Return ONLY report content. No greeting, no markdown fence, no helper text.
+- Do NOT mention that you are an AI model.
+- Use formal, clear report language.
+- Structure the answer with these headings:
+  Introduction
+  Main Part
+  Conclusion
+- Add 3-6 meaningful subsections inside Main Part.
+- Each section must contain useful body text, not just titles.
+- If source material is limited, state limitations briefly inside the report.
+
+Conversation context:
+{context}
+
+User request:
+{prompt_text}
+
+Relevant source material:
+{source_material[:30000]}
+"""
+
+    report_content = safe_generate_content(report_prompt)
+
+    if (
+        is_quota_message(report_content)
+        or report_content.startswith("Произошла ошибка")
+        or report_content.startswith("Gemini API-ключ")
+        or not report_content.strip()
+    ):
+
+        return report_content, ""
+
+    try:
+
+        output_path = make_report_output_path()
+        report_result = generate_docx_report(
+            generate_chat_title(prompt_text or "PracticeAI Report"),
+            report_content,
+            output_path,
+            {
+                "sources": sources,
+                "introduction": (
+                    "This report was prepared by PracticeAI using the request, "
+                    "conversation context, and relevant document fragments when available."
+                ),
+                "conclusion": (
+                    "The report summarizes the key findings and can be used as "
+                    "a starting point for review, editing, or further study."
+                ),
+            }
+        )
+        file_path = report_result["file_path"]
+        sections_count = report_result["sections_count"]
+        file_size = report_result["file_size"]
+
+    except Exception as error:
+
+        return (
+            f"Не удалось создать DOCX-отчёт. Детали: {error}",
+            ""
+        )
+
+    return (
+        (
+            "📄 Report created successfully\n\n"
+            f"Sections count: {sections_count}\n"
+            f"File size: {file_size / 1024:.0f} KB"
+        ),
+        file_path
+    )
+
+
 def general_agent(prompt, context):
 
     system_prompt = """
@@ -910,6 +1041,9 @@ def _agent_from_keywords(prompt, document_attached, allow_web_search=True):
     if any(word in lowered_prompt for word in presentation_words):
         return "Presentation Agent"
 
+    if any(word in lowered_prompt for word in report_docx_words):
+        return "Report DOCX Agent"
+
     if document_attached:
         return "Document Agent"
 
@@ -947,7 +1081,8 @@ def router_agent(
     document_text="",
     manual_mode=DEFAULT_AI_MODE,
     auto_web_search=True,
-    force_web_search=False
+    force_web_search=False,
+    document_sources=None
 ):
 
     if force_web_search or manual_mode == "Web Search":
@@ -957,6 +1092,10 @@ def router_agent(
     elif manual_mode == "Presentation Generator":
 
         selected_agent = "Presentation Agent"
+
+    elif manual_mode == "Report DOCX Generator":
+
+        selected_agent = "Report DOCX Agent"
 
     elif auto_mode:
 
@@ -1023,6 +1162,17 @@ def router_agent(
             prompt,
             context,
             document_text
+        )
+
+        return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], artifact_path
+
+    elif selected_agent == "Report DOCX Agent":
+
+        answer, artifact_path = report_docx_agent(
+            prompt,
+            context,
+            document_text,
+            document_sources
         )
 
         return selected_agent, AGENT_TO_MODE[selected_agent], answer, [], artifact_path

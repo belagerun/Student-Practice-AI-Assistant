@@ -365,6 +365,7 @@ AI_MODES = [
     "Internship Assistant",
     "Web Search",
     "Presentation Generator",
+    "Report DOCX Generator",
 ]
 
 MODE_SELECTION_TYPES = [
@@ -381,6 +382,7 @@ TASK_MODES = [
     "📚 Analyze All Documents",
     "🌐 Web Search",
     "Presentation Generator",
+    "Report DOCX Generator",
 ]
 
 MODE_HINTS = {
@@ -392,6 +394,7 @@ MODE_HINTS = {
     "📚 Analyze All Documents": "Задайте вопрос по всем документам...",
     "🌐 Web Search": "Что найти в интернете?",
     "Presentation Generator": "Опишите тему презентации...",
+    "Report DOCX Generator": "Опишите тему DOCX-отчёта...",
 }
 
 ARTIFACTS_DIR = Path(__file__).resolve().with_name("artifacts")
@@ -537,12 +540,12 @@ def render_chat_message(role, message, key_prefix=None):
         r"<div class=\"brand-name\">PracticeAI</div>.*?"
         r"</div>"
     )
-    artifact_pattern = r"<!--ARTIFACT:pptx:([^>]+)-->"
+    artifact_pattern = r"<!--ARTIFACT:(?:pptx|docx|pdf|txt|png|csv):([^>]+)-->"
     artifact_matches = re.findall(
         artifact_pattern,
         message
     )
-    legacy_artifact_pattern = r"📎 Artifact:\s*([^\n]+\.pptx)"
+    legacy_artifact_pattern = r"📎 Artifact:\s*([^\n]+\.(?:pptx|docx|pdf|txt|png|csv))"
     artifact_matches.extend(
         re.findall(
             legacy_artifact_pattern,
@@ -1152,7 +1155,12 @@ if not ARTIFACTS_DIR.exists():
 else:
 
     artifact_files = sorted(
-        ARTIFACTS_DIR.glob("*.pptx"),
+        [
+            path
+            for path in ARTIFACTS_DIR.iterdir()
+            if path.is_file()
+            and path.suffix.lower() in ARTIFACT_MIME_TYPES
+        ],
         key=lambda path: path.stat().st_mtime,
         reverse=True
     )
@@ -1482,6 +1490,31 @@ if send_message and prompt.strip():
             ]
         )
     )
+    report_docx_requested = (
+        st.session_state.task_mode == "Report DOCX Generator"
+        or any(
+            word in prompt.lower()
+            for word in [
+                "создай отчёт",
+                "создай отчет",
+                "сделай отчёт",
+                "сделай отчет",
+                "сгенерируй отчёт",
+                "сгенерируй отчет",
+                "напиши отчёт по документу",
+                "напиши отчет по документу",
+                "сделай docx",
+                "создай docx",
+                "docx отчёт",
+                "docx отчет",
+                "docx report",
+                "create report",
+                "generate report",
+                "generate docx report",
+                "create docx report",
+            ]
+        )
+    )
     sources_used = []
     web_sources_used = []
     artifact_path = ""
@@ -1581,6 +1614,36 @@ if send_message and prompt.strip():
                 first_source = sources_used[0]
                 selected_document_name = first_source
 
+            elif report_docx_requested:
+
+                selected_agent = "Report DOCX Agent"
+                answer = (
+                    "Не удалось создать DOCX-отчёт: в документах этого чата "
+                    "не найдено релевантных фрагментов по запросу. Уточните тему "
+                    "или укажите название файла."
+                )
+                selected_agent_message = (
+                    f"🧠 Selected agent: {selected_agent}"
+                )
+                assistant_message = f"{selected_agent_message}\n\n{answer}"
+
+                save_message(
+                    st.session_state.current_chat,
+                    "assistant",
+                    assistant_message
+                )
+
+                with st.chat_message("assistant"):
+
+                    render_chat_message(
+                        "assistant",
+                        assistant_message,
+                        "no_report_chunks"
+                    )
+
+                st.session_state.message_nonce += 1
+                st.rerun()
+
             elif st.session_state.task_mode in [
                 "Анализ PDF",
                 "📚 Analyze All Documents",
@@ -1640,7 +1703,8 @@ if send_message and prompt.strip():
             document_text[:30000],
             st.session_state.ai_mode,
             st.session_state.auto_web_search,
-            st.session_state.task_mode == "🌐 Web Search"
+            st.session_state.task_mode == "🌐 Web Search",
+            sources_used
         )
 
         st.session_state.ai_mode = selected_mode
@@ -1663,8 +1727,9 @@ if send_message and prompt.strip():
 
     if artifact_path:
 
+        artifact_suffix = Path(artifact_path).suffix.lower().lstrip(".") or "file"
         assistant_message += (
-            f"\n\n<!--ARTIFACT:pptx:{Path(artifact_path).name}-->"
+            f"\n\n<!--ARTIFACT:{artifact_suffix}:{Path(artifact_path).name}-->"
         )
 
     if sources_used:
