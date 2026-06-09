@@ -7,6 +7,7 @@ from file_reader import read_file
 from gemini_client import (
     extract_user_memories,
     generate_chat_title,
+    needs_web_search,
     router_agent,
 )
 from database import (
@@ -169,6 +170,7 @@ AI_MODES = [
     "Report Writer",
     "Document Analyst",
     "Internship Assistant",
+    "Web Search",
 ]
 
 MODE_SELECTION_TYPES = [
@@ -183,6 +185,7 @@ TASK_MODES = [
     "Генерация резюме",
     "План проекта",
     "📚 Analyze All Documents",
+    "🌐 Web Search",
 ]
 
 MODE_HINTS = {
@@ -192,6 +195,7 @@ MODE_HINTS = {
     "Генерация резюме": "Опишите опыт, навыки и должность...",
     "План проекта": "Опишите цель проекта...",
     "📚 Analyze All Documents": "Задайте вопрос по всем документам...",
+    "🌐 Web Search": "Что найти в интернете?",
 }
 
 
@@ -490,6 +494,10 @@ if "message_nonce" not in st.session_state:
 if "chat_settings_open" not in st.session_state:
 
     st.session_state.chat_settings_open = {}
+
+if "auto_web_search" not in st.session_state:
+
+    st.session_state.auto_web_search = True
 
 
 # ---------------------
@@ -800,8 +808,8 @@ with st.container(key="bottom_composer"):
 
         with st.container():
 
-            control_col_1, control_col_2, control_col_3, control_col_4 = st.columns(
-                [1.25, 0.9, 1.15, 1.15]
+            control_col_1, control_col_2, control_col_3, control_col_4, control_col_5 = st.columns(
+                [1.15, 0.85, 1.05, 1.05, 0.9]
             )
 
             with control_col_1:
@@ -839,6 +847,13 @@ with st.container(key="bottom_composer"):
                     "Тип задачи",
                     TASK_MODES,
                     index=TASK_MODES.index(st.session_state.task_mode),
+                )
+
+            with control_col_5:
+
+                st.session_state.auto_web_search = st.checkbox(
+                    "Auto Web Search",
+                    value=st.session_state.auto_web_search,
                 )
 
             if uploaded_file:
@@ -1032,13 +1047,23 @@ if send_message and prompt.strip():
             f"{role}: {message}\n"
         )
 
+    web_search_requested = (
+        st.session_state.task_mode == "🌐 Web Search"
+        or (
+            st.session_state.auto_web_search
+            and needs_web_search(prompt)
+        )
+    )
+    sources_used = []
+    web_sources_used = []
+
     if (
         st.session_state.task_mode == "Анализ PDF"
         and not chat_documents
+        and not web_search_requested
     ):
 
         selected_agent = "Document Agent"
-        sources_used = []
         answer = (
             "Загрузите PDF-файл рядом с полем ввода, "
             "а затем повторите запрос для анализа."
@@ -1047,9 +1072,8 @@ if send_message and prompt.strip():
     else:
 
         selected_document_name = ""
-        sources_used = []
 
-        if chat_documents:
+        if chat_documents and not web_search_requested:
 
             compare_document_id, compare_version_ids = find_compare_version_scope(
                 prompt,
@@ -1167,13 +1191,15 @@ if send_message and prompt.strip():
                 f"\nSelected document: {selected_document_name}\n"
             )
 
-        selected_agent, selected_mode, answer = router_agent(
+        selected_agent, selected_mode, answer, web_sources_used = router_agent(
             prompt,
             bool(chat_documents),
             st.session_state.mode_selection_type == "Auto",
             context_text,
             document_text[:30000],
-            st.session_state.ai_mode
+            st.session_state.ai_mode,
+            st.session_state.auto_web_search,
+            st.session_state.task_mode == "🌐 Web Search"
         )
 
         st.session_state.ai_mode = selected_mode
@@ -1182,17 +1208,38 @@ if send_message and prompt.strip():
         f"🧠 Selected agent: {selected_agent}"
     )
 
+    web_search_message = ""
+
+    if selected_agent == "Web Search Agent":
+
+        web_search_message = "🌐 Web Search Activated"
+
+    assistant_message = selected_agent_message
+
+    if web_search_message:
+
+        assistant_message += f"\n\n{web_search_message}"
+
+    if sources_used:
+
+        assistant_message += (
+            "\n\n🔍 Sources used:\n"
+            + "\n".join(f"* {source}" for source in sources_used)
+        )
+
+    if web_sources_used:
+
+        assistant_message += (
+            "\n\n🌐 Web sources:\n"
+            + "\n".join(f"* {source}" for source in web_sources_used)
+        )
+
+    assistant_message += f"\n\n{answer}"
+
     save_message(
         st.session_state.current_chat,
         "assistant",
-        (
-            f"{selected_agent_message}\n\n"
-            f"🔍 Sources used:\n"
-            + "\n".join(f"* {source}" for source in sources_used)
-            + f"\n\n{answer}"
-            if sources_used
-            else f"{selected_agent_message}\n\n{answer}"
-        )
+        assistant_message
     )
 
     if len(history) == 0:
@@ -1205,11 +1252,23 @@ if send_message and prompt.strip():
 
         st.markdown(selected_agent_message)
 
+        if web_search_message:
+
+            st.markdown(web_search_message)
+
         if sources_used:
 
             st.markdown("🔍 Sources used:")
 
             for source in sources_used:
+
+                st.markdown(f"* {source}")
+
+        if web_sources_used:
+
+            st.markdown("🌐 Web sources:")
+
+            for source in web_sources_used:
 
                 st.markdown(f"* {source}")
 

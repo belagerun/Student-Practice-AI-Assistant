@@ -10,6 +10,7 @@ Streamlit AI Assistant is a student-focused AI chat app with Gemini integration,
 - Multiple documents per chat.
 - Document version history.
 - Mini-RAG chunk search for document questions.
+- Web Search Agent for current internet information.
 - Automatic agent routing.
 - Safe Gemini quota handling.
 - SQLite storage with a configurable database path.
@@ -21,6 +22,7 @@ Streamlit AI Assistant is a student-focused AI chat app with Gemini integration,
 ├── app.py              # Streamlit entry point
 ├── database.py         # SQLite tables and data functions
 ├── gemini_client.py    # Gemini API client and agents
+├── web_search.py       # Internet search and page text extraction
 ├── file_reader.py      # TXT, PDF, DOCX text extraction
 ├── requirements.txt    # Python dependencies
 ├── render.yaml         # Render deployment config
@@ -39,6 +41,13 @@ SQLITE_DB_PATH=chat_history.db
 
 `GEMINI_API_KEY` is required for Gemini responses. Do not commit real API keys to GitHub.
 
+On Streamlit Community Cloud, add the same values in **App settings** -> **Secrets**:
+
+```toml
+GEMINI_API_KEY = "your_gemini_api_key_here"
+GEMINI_MODEL = "gemini-2.5-flash"
+```
+
 ## Local Run
 
 Install dependencies:
@@ -54,6 +63,17 @@ streamlit run app.py
 ```
 
 The app starts from `app.py`.
+
+## Web Search
+
+The app includes a `Web Search Agent` for current or time-sensitive questions, such as latest versions, recent news, winners, releases, and new features.
+
+In the chat settings:
+
+- Turn on `Auto Web Search` to let the router choose web search automatically.
+- Select `🌐 Web Search` to force internet search for a specific prompt.
+
+The assistant shows `🌐 Web Search Activated` and lists the sources used before the answer. If internet access is unavailable, the app returns a friendly error instead of crashing.
 
 ## SQLite Notes
 

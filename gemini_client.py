@@ -2,8 +2,8 @@ import os
 import re
 import time
 
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from web_search import search_web
 
 try:
     from dotenv import load_dotenv
@@ -23,23 +23,19 @@ def _get_streamlit_secret(name, default=""):
     except Exception:
         return default
 
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL_NAME = (
+    _get_streamlit_secret("GEMINI_MODEL")
+    or os.getenv("GEMINI_MODEL")
+    or "gemini-2.5-flash"
+)
 
 API_KEY = (
-    os.getenv("GEMINI_API_KEY")
-    or os.getenv("GOOGLE_API_KEY")
-    or _get_streamlit_secret("GEMINI_API_KEY")
-    or _get_streamlit_secret("GOOGLE_API_KEY")
+    _get_streamlit_secret("GEMINI_API_KEY")
+    or os.getenv("GEMINI_API_KEY")
     or ""
 )
 
-MODEL_NAME = _get_streamlit_secret("GEMINI_MODEL", MODEL_NAME)
-
-genai.configure(api_key=API_KEY)
-
-model = genai.GenerativeModel(
-    MODEL_NAME
-)
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
 GEMINI_QUOTA_MESSAGE = (
     "Лимит Gemini API временно исчерпан. "
@@ -51,7 +47,7 @@ _quota_blocked_until = 0
 
 def configure_gemini_api_key(api_key):
     global API_KEY
-    global model
+    global client
     global _quota_blocked_until
 
     cleaned_key = api_key.strip()
@@ -62,8 +58,7 @@ def configure_gemini_api_key(api_key):
 
     API_KEY = cleaned_key
     _quota_blocked_until = 0
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel(MODEL_NAME)
+    client = genai.Client(api_key=API_KEY)
 
 
 def _extract_retry_delay(error):
@@ -97,10 +92,23 @@ def _extract_retry_delay(error):
     return None
 
 
+def _is_quota_error(error):
+    error_text = str(error).lower()
+    quota_markers = [
+        "resource_exhausted",
+        "quota",
+        "rate limit",
+        "429",
+        "too many requests",
+    ]
+
+    return any(marker in error_text for marker in quota_markers)
+
+
 def safe_generate_content(prompt):
     global _quota_blocked_until
 
-    if not API_KEY:
+    if not API_KEY or client is None:
 
         return (
             "Gemini API-ключ не настроен. Добавьте ключ в переменную "
@@ -120,11 +128,21 @@ def safe_generate_content(prompt):
 
     try:
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt
+        )
 
         return response.text
 
-    except ResourceExhausted as error:
+    except Exception as error:
+
+        if not _is_quota_error(error):
+
+            return (
+                "Произошла ошибка при обращении к Gemini API. "
+                f"Попробуйте повторить запрос позже. Детали: {error}"
+            )
 
         retry_delay = _extract_retry_delay(error)
         _quota_blocked_until = time.time() + (retry_delay or 60)
@@ -135,13 +153,6 @@ def safe_generate_content(prompt):
             message += f" Попробуйте снова примерно через {retry_delay} секунд."
 
         return message
-
-    except Exception as error:
-
-        return (
-            "Произошла ошибка при обращении к Gemini API. "
-            f"Попробуйте повторить запрос позже. Детали: {error}"
-        )
 
 
 def is_quota_message(text):
@@ -174,6 +185,11 @@ You are an internship assistant for students.
 Help with internship tasks, daily reports, project explanations, workplace communication, and practical learning goals.
 Give concrete next steps.
 """,
+    "Web Search": """
+You are Web Search Agent.
+Use web search results to answer questions about current, recent, or time-sensitive information.
+Mention uncertainty when sources are incomplete or conflicting.
+""",
 }
 
 DEFAULT_AI_MODE = "General Assistant"
@@ -184,6 +200,7 @@ AGENT_TO_MODE = {
     "Report Agent": "Report Writer",
     "Document Agent": "Document Analyst",
     "Internship Agent": "Internship Assistant",
+    "Web Search Agent": "Web Search",
     "General Agent": "General Assistant",
 }
 
@@ -325,6 +342,7 @@ Available modes:
 - Report Writer
 - Document Analyst
 - Internship Assistant
+- Web Search
 - General Assistant
 
 Rules:
@@ -332,6 +350,7 @@ Rules:
 - Report Writer: reports, essays, structured writing, conclusions, recommendations.
 - Document Analyst: requests to analyze, summarize, extract facts, compare document content.
 - Internship Assistant: internship tasks, practice reports, workplace tasks, student practice.
+- Web Search: latest news, recent facts, current versions, winners, prices, schedules, releases.
 - General Assistant: anything else.
 - If a document is attached and the user asks about file content, prefer Document Analyst.
 
@@ -418,6 +437,9 @@ User message:
         "gemini",
         "rag",
     ]
+
+    if needs_web_search(message):
+        return "Web Search"
 
     if (
         document_attached
@@ -521,6 +543,67 @@ Give concrete steps, examples, and implementation guidance.
     )
 
 
+def web_search_agent(prompt, context):
+    search_result = search_web(
+        prompt,
+        5
+    )
+
+    if not search_result["ok"]:
+
+        return (
+            search_result["error"],
+            []
+        )
+
+    sources = []
+    web_context = ""
+
+    for index, result in enumerate(search_result["results"], start=1):
+        title = result["title"]
+        url = result["url"]
+        snippet = result["snippet"]
+        content = result["content"]
+
+        sources.append(
+            f"{title} - {url}"
+        )
+
+        web_context += (
+            f"\n\nSOURCE {index}:\n"
+            f"Title: {title}\n"
+            f"URL: {url}\n"
+            f"Snippet: {snippet}\n"
+            f"Content:\n{content}\n"
+        )
+
+    system_prompt = """
+You are Web Search Agent.
+Answer in Russian using the web sources below.
+Focus on current facts, dates, versions, winners, releases, and recent changes.
+If sources do not contain enough evidence, say that clearly.
+"""
+
+    full_prompt = f"""
+{system_prompt}
+
+Conversation context:
+{context}
+
+Web sources:
+{web_context}
+
+User request:
+{prompt}
+
+Give a concise answer first, then key details. Do not invent facts.
+"""
+
+    answer = safe_generate_content(full_prompt)
+
+    return answer, sources
+
+
 def general_agent(prompt, context):
 
     system_prompt = """
@@ -536,7 +619,64 @@ Keep answers helpful, concise, and easy to follow.
     )
 
 
-def _agent_from_keywords(prompt, document_attached):
+def needs_web_search(prompt):
+    lowered_prompt = prompt.lower()
+
+    current_words = [
+        "последние",
+        "последняя",
+        "последний",
+        "последнюю",
+        "актуальн",
+        "сейчас",
+        "сегодня",
+        "новости",
+        "новые функции",
+        "новая версия",
+        "последняя версия",
+        "кто выиграл",
+        "кто победил",
+        "результат",
+        "цена",
+        "курс",
+        "расписание",
+        "latest",
+        "recent",
+        "today",
+        "news",
+        "current",
+        "new features",
+        "release",
+        "version",
+        "winner",
+        "won",
+    ]
+
+    current_topics = [
+        "gemini",
+        "streamlit",
+        "python",
+        "лига чемпионов",
+        "champions league",
+        "openai",
+        "google",
+        "render",
+    ]
+
+    if any(word in lowered_prompt for word in current_words):
+
+        return True
+
+    return (
+        any(topic in lowered_prompt for topic in current_topics)
+        and any(
+            marker in lowered_prompt
+            for marker in ["версия", "новост", "latest", "current", "release"]
+        )
+    )
+
+
+def _agent_from_keywords(prompt, document_attached, allow_web_search=True):
 
     lowered_prompt = prompt.lower()
 
@@ -601,6 +741,9 @@ def _agent_from_keywords(prompt, document_attached):
         "автоматизация",
     ]
 
+    if allow_web_search and needs_web_search(lowered_prompt):
+        return "Web Search Agent"
+
     if document_attached:
         return "Document Agent"
 
@@ -636,15 +779,28 @@ def router_agent(
     auto_mode=True,
     context="",
     document_text="",
-    manual_mode=DEFAULT_AI_MODE
+    manual_mode=DEFAULT_AI_MODE,
+    auto_web_search=True,
+    force_web_search=False
 ):
 
-    if auto_mode:
+    if force_web_search or manual_mode == "Web Search":
 
-        selected_agent = _agent_from_keywords(
-            prompt,
-            document_attached
-        )
+        selected_agent = "Web Search Agent"
+
+    elif auto_mode:
+
+        if auto_web_search and needs_web_search(prompt):
+
+            selected_agent = "Web Search Agent"
+
+        else:
+
+            selected_agent = _agent_from_keywords(
+                prompt,
+                document_attached,
+                False
+            )
 
     else:
 
@@ -682,6 +838,15 @@ def router_agent(
             context
         )
 
+    elif selected_agent == "Web Search Agent":
+
+        answer, web_sources = web_search_agent(
+            prompt,
+            context
+        )
+
+        return selected_agent, AGENT_TO_MODE[selected_agent], answer, web_sources
+
     else:
 
         selected_agent = "General Agent"
@@ -690,7 +855,7 @@ def router_agent(
             context
         )
 
-    return selected_agent, AGENT_TO_MODE[selected_agent], answer
+    return selected_agent, AGENT_TO_MODE[selected_agent], answer, []
 
 
 def run_task(
